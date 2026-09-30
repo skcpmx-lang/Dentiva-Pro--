@@ -6,6 +6,7 @@ import type { Permission } from '@shared/permissions'
 import type { SessionManager } from '../services/auth'
 import { login, lock, unlock, changePassword } from '../services/auth'
 import { activate } from '../services/activation'
+import { integrityCheck, foreignKeyCheck, currentVersion } from '../core/db'
 import { getSetupState, completeSetup } from '../services/setup'
 import * as settingsSvc from '../services/settings'
 import * as patients from '../services/patients'
@@ -536,7 +537,6 @@ export const HANDLERS: Record<Channel, Handler> = {
     dbPath: d.ctx.paths.dbPath
   }),
   'system.diagnostics': (d) => {
-    const { integrityCheck, foreignKeyCheck, currentVersion } = require('../core/db') as typeof import('../core/db')
     const counts = (table: string): number => (d.ctx.db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c
     const lastBackup = backup.backupStatus(d.ctx).lastBackupAt
     let dbSize = 0

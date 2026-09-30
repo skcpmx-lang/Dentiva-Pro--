@@ -34,7 +34,7 @@ function computeTotals(lines: { quantity: number; unitPrice: number }[], discoun
 }
 
 const SELECT = `
-  SELECT i.*, p.full_name AS patientName, p.patient_code AS patientCode, d.full_name AS dentistName
+  SELECT i.*, p.full_name AS patientName, p.patient_code AS patientCode, p.phone AS patientPhone, d.full_name AS dentistName
   FROM invoices i JOIN patients p ON p.id = i.patient_id LEFT JOIN dentists d ON d.id = i.dentist_id
 `
 
@@ -57,6 +57,7 @@ function mapInvoice(r: Record<string, unknown>, lines: InvoiceLine[]): Invoice {
     createdAt: r.created_at as string,
     patientName: r.patientName as string,
     patientCode: r.patientCode as string,
+    patientPhone: (r.patientPhone as string | null) ?? null,
     dentistName: (r.dentistName as string | null) ?? null,
     lines
   }

@@ -7,7 +7,7 @@ import { openDatabase, migrate } from './core/db'
 import { seed } from './core/seed'
 import { createLogger } from './app/logger'
 import { PrintManager } from './app/print'
-import { registerSafeProtocol } from './app/protocol'
+import { registerSafeProtocol, registerSchemePrivilege } from './app/protocol'
 import { dispatch, type PlatformBridge, type RouterDeps } from './ipc/router'
 import { SessionManager } from './services/auth'
 import { getSettings } from './services/settings'
@@ -19,6 +19,11 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 const APP_VERSION = app.getVersion()
+
+// Testability hook for `npm run e2e` (see e2e/run.mjs). Never active in packaged builds.
+if (process.env.DENTIVA_TEST_USERDATA && !app.isPackaged) {
+  app.setPath('userData', process.env.DENTIVA_TEST_USERDATA)
+}
 
 let mainWindow: BrowserWindow | null = null
 let quitReady = false
@@ -127,6 +132,9 @@ function createMainWindow(): BrowserWindow {
 }
 
 /* ---------------- App lifecycle ---------------- */
+
+// Privileged schemes must be registered before the app is ready to load.
+registerSchemePrivilege()
 
 void app.whenReady().then(() => {
   const dataDir = app.getPath('userData')

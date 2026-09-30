@@ -1,0 +1,46 @@
+# electron-builder configuration — `npm run dist` (Windows NSIS) / `npm run dist:linux`
+appId: com.dentivapro.dentiva
+productName: Dentiva Pro
+copyright: Copyright © 2026 Shohan Khan
+
+directories:
+  buildResources: build
+  output: release
+
+# Only the compiled bundles ship; runtime node_modules are auto-included from
+# "dependencies" (better-sqlite3, archiver, extract-zip, zod).
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+
+# Native module must live outside the asar archive.
+asarUnpack:
+  - node_modules/better-sqlite3/**
+
+# resources/fonts → <install>/resources/fonts (fontsDir() reads this when packaged)
+extraResources:
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - "**/*.woff2"
+      - "*.txt"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # icon: build/icon.ico  # drop a 256×256 .ico here before release
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Dentiva Pro
+  deleteAppDataOnUninstall: false
+
+linux:
+  target: [dir]
+  category: Office

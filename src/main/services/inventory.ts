@@ -226,7 +226,7 @@ export function inventoryMove(ctx: AppContext, actor: Actor, payload: StockMoveP
   const run = ctx.db.transaction(() => {
     const item = ctx.db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(d.itemId) as Record<string, unknown> | undefined
     if (!item) throw errNotFound('Inventory item not found.')
-    let batchId = d.batchId ?? null
+    const batchId = d.batchId ?? null
     if (batchId) {
       const batch = ctx.db.prepare('SELECT * FROM inventory_batches WHERE id = ? AND item_id = ?').get(batchId, d.itemId) as Record<string, unknown> | undefined
       if (!batch) throw errNotFound('Batch not found for this item.')

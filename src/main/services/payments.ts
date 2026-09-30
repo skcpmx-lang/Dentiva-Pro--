@@ -42,7 +42,7 @@ function mapRow(r: Record<string, unknown>): Payment {
   }
 }
 
-export function paymentList(ctx: AppContext, query: { preset?: string; from?: string; to?: string; method?: string; search?: string; page: number; pageSize: number }) {
+export function paymentList(ctx: AppContext, query: { preset?: string; from?: string; to?: string; method?: string; search?: string; invoiceId?: number; page: number; pageSize: number }) {
   const page = Math.max(1, query.page | 0 || 1)
   const pageSize = Math.min(200, Math.max(5, query.pageSize | 0 || 25))
   const range = resolveRange((query.preset ?? 'today') as 'today', { from: query.from, to: query.to }, ctx.clock())
@@ -50,6 +50,7 @@ export function paymentList(ctx: AppContext, query: { preset?: string; from?: st
   const params: Record<string, unknown> = {}
   if (query.preset !== 'all') { where.push('pay.payment_date >= $from AND pay.payment_date <= $to'); params.from = range.from; params.to = range.to }
   if (query.method) { where.push('pay.method = $method'); params.method = query.method }
+  if (query.invoiceId) { where.push('pay.invoice_id = $invoice'); params.invoice = query.invoiceId }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
     where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\' OR pay.reference LIKE $q ESCAPE \'\\\' OR i.invoice_no LIKE $q ESCAPE \'\\\')')

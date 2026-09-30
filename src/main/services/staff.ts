@@ -140,6 +140,7 @@ function mapUser(ctx: AppContext, r: Record<string, unknown>): UserRecord {
     staffId: (r.staff_id as number | null) ?? null,
     staffName,
     isActive: r.is_active === 1,
+    mustChangePassword: r.must_change_password === 1,
     lastLoginAt: (r.last_login_at as string | null) ?? null,
     createdAt: r.created_at as string
   }

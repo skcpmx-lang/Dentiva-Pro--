@@ -11,6 +11,20 @@ export type {
   DurationUnit, Dentition, PaperType, PrintDocType, NotificationAudience, NotificationSeverity
 } from './enums'
 
+export interface DentistInput {
+  id?: number
+  fullName: string
+  phone?: string | null
+  email?: string | null
+  workingSchedule?: Record<string, unknown> | null
+  isActive?: boolean
+  notes?: string | null
+  designations: string[]
+  qualifications?: string[]
+}
+
+export type ClinicRow = Clinic
+
 export interface Clinic {
   name: string
   address: string
@@ -337,6 +351,7 @@ export interface Invoice {
   createdAt: string
   patientName: string
   patientCode: string
+  patientPhone: string | null
   dentistName: string | null
   lines: InvoiceLine[]
 }
@@ -393,6 +408,24 @@ export interface FinancialTxn {
   paymentId: number | null
   createdBy: string
   createdAt: string
+}
+
+export interface FinancialTxnInput {
+  id?: number
+  kind: 'income' | 'expense'
+  categoryId: number
+  amount: number
+  txnDate: string
+  method: PaymentMethod
+  description?: string | null
+  reference?: string | null
+}
+
+export interface AccountingCategoryInput {
+  id?: number
+  kind: 'income' | 'expense'
+  name: string
+  isActive?: boolean
 }
 
 export interface AccountingCategory {
@@ -552,3 +585,5 @@ export interface AppVersionInfo {
   creatorName: string
   creatorEmail: string
 }
+
+export type { AppSettings, SettingsGroup } from './settings'

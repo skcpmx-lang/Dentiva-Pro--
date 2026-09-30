@@ -3,9 +3,10 @@ import type { Permission } from './permissions'
 import type {
   Clinic, Dentist, Staff, SessionUser, Patient, PatientListRow, PatientDetail, Visit, Treatment,
   ToothCondition, ChartEntry, ToothState, Prescription, Medicine, Attachment, Referral,
-  AppointmentRow, QueueEntry, Invoice, Payment, PaymentSummary, FinancialTxn, AccountingCategory,
+  AppointmentRow, QueueEntry, Invoice, Payment, PaymentSummary, FinancialTxn, FinancialTxnInput, AccountingCategory,
   AccountingSummary, Supplier, InventoryItem, InventoryBatch, StockMovement, InventoryAlerts,
   Role, AuditEntry, NotificationItem, BackupRecord, PrinterProfile, TimelineEvent, Paginated,
+  AccountingCategoryInput, DentistInput,
   AppVersionInfo
 } from './types'
 import type { AppSettings, SettingsGroup } from './settings'
@@ -284,6 +285,7 @@ export interface UserRecord {
   staffId: number | null
   staffName: string | null
   isActive: boolean
+  mustChangePassword: boolean
   lastLoginAt: string | null
   createdAt: string
 }
@@ -389,7 +391,7 @@ export interface DentivaApi {
   'clinic.get': ChannelDef<void, Clinic>
   'clinic.update': ChannelDef<Partial<Clinic>, Clinic>
   'dentist.list': ChannelDef<{ activeOnly?: boolean } | void, Dentist[]>
-  'dentist.save': ChannelDef<Omit<Dentist, 'designations' | 'qualifications'> & { designations: string[]; qualifications: string[] }, Dentist>
+  'dentist.save': ChannelDef<DentistInput, Dentist>
   'dentist.delete': ChannelDef<{ id: number; confirm: string }, { ok: true }>
   'clinic.uploadLogo': ChannelDef<void, Clinic>
 
@@ -471,7 +473,7 @@ export interface DentivaApi {
   'invoice.void': ChannelDef<{ id: number; reason: string }, Invoice>
   'invoice.delete': ChannelDef<{ id: number }, { ok: true }>
   'invoice.nextNumber': ChannelDef<void, { invoiceNo: string }>
-  'payment.list': ChannelDef<VisitListQuery & { method?: string }, Paginated<Payment>>
+  'payment.list': ChannelDef<VisitListQuery & { method?: string; invoiceId?: number }, Paginated<Payment>>
   'payment.create': ChannelDef<PaymentInput, Payment>
   'payment.void': ChannelDef<{ id: number; reason: string }, Payment>
   'payment.delete': ChannelDef<{ id: number }, { ok: true }>
@@ -482,10 +484,10 @@ export interface DentivaApi {
   'financial.patient': ChannelDef<{ patientId: number }, FinancialPatientSummary>
   'financial.dashboard': ChannelDef<RangeQuery, FinancialDashboard>
   'accounting.list': ChannelDef<RangeQuery & { kind?: string; categoryId?: number; page: number; pageSize: number }, Paginated<FinancialTxn>>
-  'accounting.save': ChannelDef<FinancialTxn & { id?: number }, FinancialTxn>
+  'accounting.save': ChannelDef<FinancialTxnInput, FinancialTxn>
   'accounting.delete': ChannelDef<{ id: number }, { ok: true }>
   'accounting.categories': ChannelDef<void, AccountingCategory[]>
-  'accounting.saveCategory': ChannelDef<AccountingCategory, AccountingCategory[]>
+  'accounting.saveCategory': ChannelDef<AccountingCategoryInput, AccountingCategory[]>
   'accounting.summary': ChannelDef<RangeQuery, AccountingSummary>
 
   // inventory

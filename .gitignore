@@ -1,5 +1,6 @@
 node_modules/
 out/
+release/
 dist/
 coverage/
 *.log
@@ -15,3 +16,5 @@ test-output/
 .env
 .env.*
 *.local
+e2e/artifacts/
+e2e/.userdata-*/

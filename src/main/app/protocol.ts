@@ -11,14 +11,20 @@ import type { AppContext } from '../core/context'
  *   logo/<file>           → clinic logos
  * Every path is prefix-validated against its root — traversal is impossible.
  */
-export function registerSafeProtocol(ctx: AppContext, fontsDir: string): void {
+/**
+ * Must run BEFORE app 'ready' — Electron only accepts privileged scheme
+ * registration during startup. protocol.handle() below runs after ready.
+ */
+export function registerSchemePrivilege(): void {
   protocol.registerSchemesAsPrivileged([
     {
       scheme: 'dentiva-safe',
       privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
     }
   ])
+}
 
+export function registerSafeProtocol(ctx: AppContext, fontsDir: string): void {
   const roots: Record<string, string> = {
     fonts: resolve(fontsDir),
     temp: resolve(ctx.paths.tempDir),
