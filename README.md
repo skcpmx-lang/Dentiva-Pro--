@@ -33,6 +33,7 @@ Electron 44 · React 19 + TypeScript 5.9 · electron-vite 5 · better-sqlite 3 (
 
 ```bash
 npm install          # install toolchain
+npm run rebuild:native  # rebuild better-sqlite3 for Electron's ABI (required before dev/e2e)
 npm run dev          # electron-vite dev (app + hot reload)
 npm run typecheck    # tsc for main + renderer
 npm run lint         # ESLint 9 flat config

@@ -58,6 +58,9 @@ async function main() {
   })
 
   const consoleErrors = []
+  // Surface main-process output (native module failures, boot crashes) in the log.
+  app.process().stdout?.on('data', (d) => process.stdout.write(`[electron] ${d}`))
+  app.process().stderr?.on('data', (d) => process.stderr.write(`[electron-err] ${d}`))
   try {
     const window = await app.firstWindow()
     // Attach before load finishes so boot-time errors are captured.
