@@ -370,7 +370,7 @@ export function PaymentForm({ invoice, onClose, onSaved }: { invoice: Awaited<Re
 }
 
 /* ================= New invoice ================= */
-function InvoiceForm({ onClose, onSaved, onOpen }: { onClose: () => void; onSaved: () => Promise<void>; onOpen: (inv: Invoice) => void }): React.ReactNode {
+export function InvoiceForm({ presetPatientId, onClose, onSaved, onOpen }: { presetPatientId?: number; onClose: () => void; onSaved: () => Promise<void>; onOpen: (inv: Invoice) => void }): React.ReactNode {
   const [patientSearch, setPatientSearch] = useState('')
   const [patients, setPatients] = useState<{ id: number; patientCode: string; fullName: string }[]>([])
   const [patientId, setPatientId] = useState<number | null>(null)
@@ -387,7 +387,12 @@ function InvoiceForm({ onClose, onSaved, onOpen }: { onClose: () => void; onSave
   useEffect(() => {
     void call('dentist.list', { activeOnly: true }).then((d) => { setDentists(d); setDentistId((c) => c ?? d[0]?.id ?? null) }).catch(() => undefined)
     void call('treatment.list', { page: 1, pageSize: 200, activeOnly: true }).then(setTreatments).catch(() => setTreatments({ rows: [], total: 0 }))
-  }, [])
+    if (presetPatientId) {
+      void call('patient.get', { id: presetPatientId })
+        .then((p) => { setPatients([{ id: p.id, patientCode: p.patientCode, fullName: p.fullName }]); setPatientId(p.id) })
+        .catch(() => undefined)
+    }
+  }, [presetPatientId])
 
   useEffect(() => {
     if (patientId || patientSearch.trim().length < 2) return

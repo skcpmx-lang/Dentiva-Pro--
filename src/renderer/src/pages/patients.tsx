@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Plus, Archive, ArchiveRestore, Trash2, Download, Pencil } from 'lucide-react'
+import { Plus, Archive, ArchiveRestore, Trash2, Download, Pencil, Stethoscope, FileText, Receipt, Wallet } from 'lucide-react'
 import { call } from '../ipc'
 import { can } from '../store'
 import { Button, ConfirmDialog, EmptyState, Field, Loading, Modal, Pagination, SearchBar, StatusBadge, money, toast, useDebounced } from '../ui'
-import type { Patient, PatientListRow } from '@shared/types'
+import type { Patient, PatientListRow, Invoice } from '@shared/types'
 import type { PatientInput } from '@shared/ipc'
+import { VisitForm } from './visits'
+import { RxForm } from './prescriptions'
+import { InvoiceForm, PaymentForm } from './billing'
 
 /* ================= List ================= */
 export function PatientsPage(): React.ReactNode {
@@ -190,6 +193,11 @@ export function PatientDetailPage(): React.ReactNode {
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof call<'patient.get'>>> | null>(null)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
+  const [showVisit, setShowVisit] = useState(false)
+  const [showRx, setShowRx] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [payList, setPayList] = useState<Invoice[] | null>(null)
+  const [payTarget, setPayTarget] = useState<Invoice | null>(null)
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -219,6 +227,16 @@ export function PatientDetailPage(): React.ReactNode {
     nav('/patients')
   }
 
+  const openPayList = async (): Promise<void> => {
+    setPayTarget(null)
+    try {
+      const res = await call('invoice.list', { preset: 'all', patientId, page: 1, pageSize: 50 })
+      setPayList(res.rows.filter((i) => i.status === 'unpaid' || i.status === 'partial'))
+    } catch {
+      setPayList([])
+    }
+  }
+
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="row row-wrap">
@@ -237,6 +255,15 @@ export function PatientDetailPage(): React.ReactNode {
           <Button variant="ghost-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /> Delete</Button>
         ) : null}
       </div>
+
+      {!detail.archivedAt ? (
+        <div className="row row-wrap">
+          {can('visit.create') ? <Button variant="primary" onClick={() => setShowVisit(true)}><Stethoscope size={14} /> New visit</Button> : null}
+          {can('prescription.create') ? <Button variant="primary" onClick={() => setShowRx(true)}><FileText size={14} /> New prescription</Button> : null}
+          {can('invoice.create') ? <Button onClick={() => setShowInvoice(true)}><Receipt size={14} /> New invoice</Button> : null}
+          {can('payment.create') ? <Button onClick={() => void openPayList()}><Wallet size={14} /> Take payment</Button> : null}
+        </div>
+      ) : null}
 
       <div className="grid grid-side">
         <div className="col" style={{ gap: 16 }}>
@@ -294,6 +321,31 @@ export function PatientDetailPage(): React.ReactNode {
       </div>
 
       {editing ? <PatientForm patient={detail} onClose={() => setEditing(false)} onSaved={async () => { setEditing(false); await load() }} /> : null}
+      {showVisit ? <VisitForm presetPatientId={patientId} onClose={() => setShowVisit(false)} onSaved={load} /> : null}
+      {showRx ? <RxForm presetPatientId={patientId} onClose={() => setShowRx(false)} onSaved={load} /> : null}
+      {showInvoice ? <InvoiceForm presetPatientId={patientId} onClose={() => setShowInvoice(false)} onSaved={load} onOpen={() => undefined} /> : null}
+      {payList !== null && !payTarget ? (
+        <Modal title="Take payment — choose invoice" onClose={() => setPayList(null)} footer={<Button onClick={() => setPayList(null)}>Cancel</Button>}>
+          {payList.length === 0 ? (
+            <EmptyState title="No due invoices" hint="Create an invoice first, or record the payment from Billing." />
+          ) : (
+            <table className="tbl">
+              <thead><tr><th>Invoice</th><th>Date</th><th className="num">Due</th><th /></tr></thead>
+              <tbody>
+                {payList.map((inv) => (
+                  <tr key={inv.id}>
+                    <td className="text-mono">{inv.invoiceNo}</td>
+                    <td className="text-mono">{inv.invoiceDate}</td>
+                    <td className="num"><b>{money(inv.dueAmount)}</b></td>
+                    <td><Button size="sm" variant="primary" onClick={() => setPayTarget(inv)}>Select</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Modal>
+      ) : null}
+      {payTarget ? <PaymentForm invoice={payTarget} onClose={() => { setPayTarget(null); setPayList(null) }} onSaved={load} /> : null}
       {confirmArchive ? (
         <ConfirmDialog
           title={detail.archivedAt ? 'Restore patient' : 'Archive patient'}
