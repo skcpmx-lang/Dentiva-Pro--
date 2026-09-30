@@ -3,7 +3,7 @@ import { Download, Printer } from 'lucide-react'
 import { call } from '../ipc'
 import { useApp, can } from '../store'
 import { Button, EmptyState, Loading, toast } from '../ui'
-import { renderReport } from '../print'
+import { renderReport } from '@shared/print'
 import type { ReportDescriptor, ReportResult } from '@shared/ipc'
 
 const PRESETS = [

@@ -76,7 +76,7 @@ function ClinicTab(): React.ReactNode {
           <Field label="Phone 2"><input className="input" value={clinic.phone2 ?? ''} onChange={(e) => setClinic({ ...clinic, phone2: e.target.value })} /></Field>
           <Field label="Email"><input className="input" value={clinic.email ?? ''} onChange={(e) => setClinic({ ...clinic, email: e.target.value })} /></Field>
           {can('settings.manage') ? (
-            <div className="span-2 row">
+            <div className="span-2 row" style={{ alignItems: 'center' }}>
               <Button
                 loading={logoBusy}
                 onClick={async () => {
@@ -92,6 +92,30 @@ function ClinicTab(): React.ReactNode {
               >
                 Upload logo…
               </Button>
+              {clinic.logoPath ? (
+                <>
+                  <img
+                    src={`dentiva-safe://logo/${encodeURIComponent(clinic.logoPath)}`}
+                    alt="Clinic logo"
+                    style={{ maxHeight: 44, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost-danger"
+                    onClick={async () => {
+                      try {
+                        await call('clinic.update', { logo_path: null })
+                        toast('Logo removed.')
+                        await load()
+                      } catch (e) {
+                        toast(e instanceof Error ? e.message : 'Failed.', 'error')
+                      }
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </>
+              ) : null}
               <span className="hint">PNG/JPG/WebP up to 2 MB — appears on printed documents.</span>
             </div>
           ) : null}

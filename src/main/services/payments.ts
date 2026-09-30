@@ -235,10 +235,10 @@ function getClinicForPrint(ctx: AppContext): ReceiptData['clinic'] {
       phone: c.phone ?? '',
       phone2: c.phone2,
       email: c.email,
-      logoPath: c.logo_path,
+      logoPath: c.logoPath,
       tagline: c.tagline,
-      footerMessage: c.footer_message,
-      doctorTiming: c.doctor_timing
+      footerMessage: c.footerMessage,
+      doctorTiming: c.doctorTiming
     }
   } catch {
     throw errIo('Clinic profile is missing.')

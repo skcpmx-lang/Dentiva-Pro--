@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { AppContext, Actor } from '../core/context'
 import { errValidation, errNotFound } from '@shared/errors'
 import { DEFAULT_SETTINGS, SETTINGS_GROUPS, type AppSettings, type SettingsGroup } from '@shared/settings'
+import type { Clinic } from '@shared/types'
 import { audit } from './audit'
 
 export function getSettings(ctx: AppContext): AppSettings {
@@ -98,7 +99,8 @@ export function setSettingsForSystem(ctx: AppContext, mutate: (s: AppSettings) =
 
 /* ------------ Clinic + dentists ------------ */
 
-export interface ClinicRow {
+/** Raw DB row (snake_case columns). Never leaves the service layer. */
+interface ClinicDbRow {
   id: number
   name: string
   address: string | null
@@ -111,10 +113,27 @@ export interface ClinicRow {
   doctor_timing: string | null
 }
 
+/** Public clinic shape (camelCase, matches shared Clinic type used by the renderer). */
+export type ClinicRow = Clinic
+
+function mapClinicRow(r: ClinicDbRow): ClinicRow {
+  return {
+    name: r.name,
+    address: r.address ?? '',
+    phone: r.phone ?? '',
+    phone2: r.phone2,
+    email: r.email,
+    logoPath: r.logo_path,
+    tagline: r.tagline,
+    footerMessage: r.footer_message,
+    doctorTiming: r.doctor_timing
+  }
+}
+
 export function getClinic(ctx: AppContext): ClinicRow {
-  const row = ctx.db.prepare('SELECT * FROM clinic WHERE id = 1').get() as ClinicRow | undefined
+  const row = ctx.db.prepare('SELECT * FROM clinic WHERE id = 1').get() as ClinicDbRow | undefined
   if (!row) throw errNotFound('Clinic profile is not configured yet.')
-  return row
+  return mapClinicRow(row)
 }
 
 const clinicPatchSchema = z.object({
@@ -145,10 +164,10 @@ export function updateClinic(ctx: AppContext, actor: Actor, patch: Record<string
       data.phone !== undefined ? data.phone : current.phone,
       data.phone2 !== undefined ? data.phone2 : current.phone2,
       data.email !== undefined ? (data.email === '' ? null : data.email) : current.email,
-      data.logo_path !== undefined ? data.logo_path : current.logo_path,
+      data.logo_path !== undefined ? data.logo_path : current.logoPath,
       data.tagline !== undefined ? data.tagline : current.tagline,
-      data.footer_message !== undefined ? data.footer_message : current.footer_message,
-      data.doctor_timing !== undefined ? data.doctor_timing : current.doctor_timing,
+      data.footer_message !== undefined ? data.footer_message : current.footerMessage,
+      data.doctor_timing !== undefined ? data.doctor_timing : current.doctorTiming,
       ts
     )
     audit(ctx, actor, { action: 'update', entity: 'clinic', entityId: 1, oldValue: current, newValue: data })

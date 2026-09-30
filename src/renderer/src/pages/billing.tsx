@@ -4,7 +4,7 @@ import { call } from '../ipc'
 import { can, useApp } from '../store'
 import { Button, ConfirmDialog, EmptyState, Field, Loading, Modal, Pagination, SearchBar, StatusBadge, money, toast, useDebounced } from '../ui'
 import { todayISO, formatDateHuman } from '@shared/dates'
-import { renderInvoice, renderReceipt } from '../print'
+import { renderInvoice, renderReceipt } from '@shared/print'
 import type { Invoice, Payment, Treatment } from '@shared/types'
 
 type Tab = 'invoices' | 'payments'

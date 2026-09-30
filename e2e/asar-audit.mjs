@@ -45,13 +45,19 @@ const FORBIDDEN_PREFIXES = [
   'tests/', 'e2e/', 'docs/', 'scripts/', '.github/', 'src/', 'coverage/',
   'node_modules/.bin/', 'node_modules/.cache/', 'node_modules/.package-lock.json'
 ]
-const FORBIDDEN_SUFFIXES = ['.ts', '.map', '.env', '.log', '.snap']
+const FORBIDDEN_SUFFIXES = ['.ts', '.map', '.env', '.log', '.snap', '.test.js', '.spec.js', '.test.cjs', '.spec.cjs', '.test.mjs', '.spec.mjs']
+const FORBIDDEN_DIR_SEGMENTS = ['__tests__', 'test', 'tests']
 const FORBIDDEN_EXACT = ['.editorconfig', '.eslintrc.cjs', '.gitignore', 'electron-builder.yml', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.node.json', 'tsconfig.web.json']
 
 for (const e of entries) {
   if (FORBIDDEN_PREFIXES.some((p) => e === p.slice(0, -1) || e.startsWith(p))) fail(`forbidden path in asar: ${e}`)
   if (FORBIDDEN_SUFFIXES.some((s) => e.endsWith(s))) fail(`forbidden file type in asar: ${e}`)
   if (FORBIDDEN_EXACT.includes(basename(e)) && !e.includes('/')) fail(`repo file leaked into asar root: ${e}`)
+  // test directories anywhere (e.g. node_modules/<pkg>/tests/)
+  if (e.startsWith('node_modules/')) {
+    const segs = e.split('/')
+    if (segs.slice(2, -1).some((s) => FORBIDDEN_DIR_SEGMENTS.includes(s))) fail(`test directory packaged inside node_modules: ${e}`)
+  }
 }
 
 // ------------------------------------------------------- 2. dev-only packages

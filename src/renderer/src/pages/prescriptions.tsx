@@ -4,7 +4,7 @@ import { call } from '../ipc'
 import { can } from '../store'
 import { Button, ConfirmDialog, EmptyState, Field, Loading, Modal, Pagination, SearchBar, StatusBadge, toast, useDebounced } from '../ui'
 import { todayISO, formatDateHuman } from '@shared/dates'
-import { renderPrescription } from '../print'
+import { renderPrescription } from '@shared/print'
 import type { Prescription } from '@shared/types'
 
 interface MedDraft {

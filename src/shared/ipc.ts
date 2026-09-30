@@ -389,7 +389,7 @@ export interface DentivaApi {
 
   // clinic & dentists
   'clinic.get': ChannelDef<void, Clinic>
-  'clinic.update': ChannelDef<Partial<Clinic>, Clinic>
+  'clinic.update': ChannelDef<Partial<Clinic> & { logo_path?: string | null }, Clinic>
   'dentist.list': ChannelDef<{ activeOnly?: boolean } | void, Dentist[]>
   'dentist.save': ChannelDef<DentistInput, Dentist>
   'dentist.delete': ChannelDef<{ id: number; confirm: string }, { ok: true }>

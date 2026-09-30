@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { BrowserWindow } from 'electron'
 import type { AppContext } from '../core/context'
@@ -7,6 +7,9 @@ import { errIo, errValidation } from '@shared/errors'
 import { AppError } from '@shared/errors'
 import type { PrintPdfPayload, PrintPdfResult } from '@shared/ipc'
 import { paperSizeMm } from '@shared/settings'
+import { countPdfPages } from '../core/pdf'
+
+export { countPdfPages, pdfFirstPageSizePoints, readPdfForTest } from '../core/pdf'
 
 interface PrintJob {
   key: string
@@ -14,6 +17,19 @@ interface PrintJob {
   pdfUrl: string
   htmlWindow: BrowserWindow | null
   createdAt: number
+}
+
+/**
+ * Injects the bundled-font CSS into a print document. The renderer templates
+ * are complete HTML documents — injecting into their <head> keeps a single
+ * valid document instead of nesting a full document inside <body>. Bare HTML
+ * fragments are wrapped in a minimal document.
+ */
+function injectPrintFonts(html: string, fontCss: string): string {
+  const inject = `<meta charset="utf-8"><style>${fontCss}</style>`
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + inject)
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => m + `<head>${inject}</head>`)
+  return `<!DOCTYPE html><html><head>${inject}</head><body>${html}</body></html>`
 }
 
 /**
@@ -54,7 +70,7 @@ export class PrintManager {
       @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-700-normal.woff2') format('woff2'); }
       @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-latin-700-normal.woff2') format('woff2'); }
     `
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${fontCss}</style></head><body>${html}</body></html>`
+    const fullHtml = injectPrintFonts(html, fontCss)
     writeFileSync(htmlPath, fullHtml, 'utf8')
 
     const size = paperSizeMm({ paper: opts.paper, widthMm: opts.widthMm, heightMm: opts.heightMm })
@@ -127,29 +143,4 @@ export class PrintManager {
       }
     }
   }
-}
-
-/** Counts pages in a PDF buffer (enough for display purposes). */
-export function countPdfPages(pdf: Buffer): number {
-  const text = pdf.toString('latin1')
-  const matches = text.match(/\/Type\s*\/Page[^s]/g)
-  if (matches && matches.length > 0) return matches.length
-  const counts = text.match(/\/Count\s+(\d+)/g)
-  if (counts && counts.length > 0) {
-    const nums = counts.map((c) => Number(c.replace(/\D+/g, '')))
-    return Math.max(...nums)
-  }
-  return 1
-}
-
-/** Extracts the MediaBox of the first page in PDF points — used by tests to assert exact paper geometry. */
-export function pdfFirstPageSizePoints(pdf: Buffer): { width: number; height: number } | null {
-  const text = pdf.toString('latin1')
-  const m = text.match(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/)
-  if (!m) return null
-  return { width: Number(m[3]) - Number(m[1]), height: Number(m[4]) - Number(m[2]) }
-}
-
-export function readPdfForTest(pdfPath: string): Buffer {
-  return readFileSync(pdfPath)
 }
