@@ -27,6 +27,7 @@
     "archiver": "^7.0.1",
     "better-sqlite3": "^13.0.3",
     "extract-zip": "^2.0.1",
+    "pyyaml": "^0.0.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

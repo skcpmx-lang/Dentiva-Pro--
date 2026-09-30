@@ -41,6 +41,9 @@ jobs:
     name: E2E smoke (xvfb)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -52,16 +55,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # npm ci builds better-sqlite3 for the Node ABI (127); the real Electron
-      # main process needs its own ABI (149) or it crashes at require().
-      - name: Rebuild native modules for Electron
+      # better-sqlite3 v13 is NAPI (ABI-stable across Node and Electron), so this
+      # is normally a fast no-op — it stays as a guard for any future non-NAPI
+      # native dependency and validates native deps resolve under Electron.
+      - name: Verify/rebuild native modules for Electron
         run: npx electron-builder install-app-deps
 
       - name: Build (electron-vite)
         run: npm run build
 
       - name: Run E2E smoke test
-        run: xvfb-run -a --server-args="-screen 0 1280x800x24" npm run e2e
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a --server-args="-screen 0 1280x800x24" npm run e2e 2>&1 | tee e2e-output.log
+
+      # The build sandbox that drives this PR cannot reach Actions log/blob
+      # storage, so on failure the tail of the log is posted here as a comment.
+      - name: Report e2e failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          {
+            echo "### 🤖 Automated E2E failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '```'
+            tail -n 150 e2e-output.log
+            echo '```'
+          } > /tmp/e2e-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/e2e-failure.md
 
       - name: Upload screenshot on failure
         if: failure()
