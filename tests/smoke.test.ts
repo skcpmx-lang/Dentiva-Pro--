@@ -98,6 +98,31 @@ describe('patient lifecycle', () => {
     expect(search.total).toBe(1)
   })
 
+  it('returns patient list rows in the camelCase shape the UI renders', () => {
+    // Regression: patientList once leaked raw snake_case rows (full_name,
+    // patient_code…) — every list column and patient picker rendered blank.
+    const list = patientList(env.ctx, env.owner, { preset: 'all', page: 1, pageSize: 25, status: 'all' })
+    const row = list.rows.find((r) => r.fullName === 'আরিফুল ইসলাম')
+    expect(row).toBeDefined()
+    expect(row?.patientCode).toMatch(/^DP-\d+$/)
+    expect(row?.phone).toBe('01712345678')
+    expect(row?.chiefComplaint).toBe('Tooth pain')
+    expect(row?.gender).toBe('male')
+    expect(row?.visitCount).toBe(0)
+    expect(row?.lastVisitDate).toBeNull()
+    expect(row?.registeredAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(row?.archived).toBe(false)
+    // the snake_case keys must not leak across the IPC boundary
+    expect(Object.keys(row ?? {})).not.toContain('full_name')
+    expect(Object.keys(row ?? {})).not.toContain('patient_code')
+  })
+
+  it('sorts the patient list by last visit without a SQL error', () => {
+    // Regression: ORDER BY lastVisit referenced a non-existent column.
+    expect(() => patientList(env.ctx, env.owner, { preset: 'all', page: 1, pageSize: 25, sort: 'lastVisit' })).not.toThrow()
+    expect(() => patientList(env.ctx, env.owner, { preset: 'all', page: 1, pageSize: 25, sort: 'name' })).not.toThrow()
+  })
+
   it('blocks duplicate patient codes', () => {
     expect(() =>
       patientCreate(env.ctx, env.owner, { fullName: 'Code Clash', gender: 'female', patientCode: 'DP-00001' })

@@ -192,10 +192,15 @@ async function main() {
     await page.locator('input[placeholder="01XXXXXXXXX"]').fill(PATIENT.phone)
     await page.locator('input[placeholder="e.g. Pain in lower right molar"]').fill(PATIENT.complaint)
     await page.getByRole('button', { name: 'Create patient' }).click()
-    await page.waitForSelector(`.tbl >> text=${PATIENT.name}`)
+    // the app navigates to the new patient's profile after creation
+    await page.waitForSelector(`text=${PATIENT.name}`, { timeout: 10_000 })
+    await page.waitForSelector('text=DP-00001', { timeout: 10_000 })
+    await page.waitForFunction(() => /^#\/patients\/\d+$/.test(window.location.hash), null, { timeout: 10_000 })
   })
 
   await step('patients: patient profile opens with quick actions', async () => {
+    // exercise the list → profile path (the list row now carries the patient name)
+    await page.locator('.nav-item', { hasText: 'Patients' }).click()
     await page.locator('.tbl tbody tr', { hasText: PATIENT.name }).first().click()
     await page.waitForSelector('text=New visit')
     for (const label of ['New prescription', 'New invoice', 'Take payment']) {
@@ -207,9 +212,8 @@ async function main() {
   /* ---------------- visit ---------------- */
   await step('visits: record a visit with a treatment line', async () => {
     await page.getByRole('button', { name: 'New visit' }).click()
-    await page.locator('input[placeholder="Search patient…"]').waitFor()
-    // patient is preselected from the profile — add a treatment line
-    await page.locator('input[placeholder="Treatment name"]').first().fill('Scaling & polishing')
+    // patient is preselected from the profile — no patient search input is shown
+    await page.locator('input[placeholder="Treatment name"]').first().waitFor()
     await page.locator('input[title="Unit price in ৳"]').first().fill('1500')
     await page.getByRole('button', { name: /Save visit/ }).click()
     await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })

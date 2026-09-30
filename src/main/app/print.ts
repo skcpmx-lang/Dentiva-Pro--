@@ -79,6 +79,16 @@ export class PrintManager {
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
     try {
       await win.loadURL(`dentiva-safe://temp/${id}.html`)
+      // Web fonts load asynchronously (did-finish-load does not wait for them).
+      // Printing while the @font-face files are still loading makes the print
+      // compositor fail to read the serialized page ("CompositePages: Page
+      // reading failed" → printToPDF rejects with "Printing failed") — the
+      // same race Puppeteer fixed by awaiting document.fonts.ready before
+      // Page.printToPDF. Bounded so a stuck font can never hang printing.
+      await Promise.race([
+        win.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5000))
+      ])
       const pdf = await win.webContents.printToPDF({
         printBackground: true,
         preferCSSPageSize: true,

@@ -52,7 +52,7 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
   const status = query.status ?? 'active'
   if (status === 'archived') {
     where.push('p.archived_at IS NOT NULL')
-  } else {
+  } else if (status !== 'all') {
     where.push('p.archived_at IS NULL')
     where.push('p.status = $status')
     params.status = status
@@ -67,7 +67,7 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
   const orderBy =
     sort === 'oldest' ? 'p.registered_at ASC, p.id ASC' :
     sort === 'name' ? 'p.full_name COLLATE NOCASE ASC' :
-    sort === 'lastVisit' ? 'lastVisit DESC' :
+    sort === 'lastVisit' ? 'lastVisitDate DESC' :
     'p.registered_at DESC, p.id DESC'
 
   const total = (
@@ -82,10 +82,30 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
     FROM patients p ${whereSql}
     ORDER BY ${orderBy}
     LIMIT $limit OFFSET $offset
-  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as (PatientListRow & { archived_at: string | null })[]
+  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Array<{
+    id: number; patient_code: string; full_name: string; age: number | null; gender: 'male' | 'female' | 'other'
+    phone: string | null; chief_complaint: string | null; status: 'active' | 'inactive'
+    registered_at: string; archived_at: string | null; visitCount: number; lastVisitDate: string | null
+  }>
 
+  // Map to the camelCase PatientListRow contract the renderer consumes — the
+  // raw snake_case row must never leak across the IPC boundary (the patient
+  // list and every patient picker render blank names otherwise).
   return {
-    rows: rows.map((r) => ({ ...r, archived: r.archived_at != null })),
+    rows: rows.map((r) => ({
+      id: r.id,
+      patientCode: r.patient_code,
+      fullName: r.full_name,
+      age: r.age,
+      gender: r.gender,
+      phone: r.phone,
+      chiefComplaint: r.chief_complaint,
+      status: r.status,
+      registeredAt: r.registered_at,
+      lastVisitDate: r.lastVisitDate,
+      visitCount: r.visitCount,
+      archived: r.archived_at != null
+    })),
     total, page, pageSize
   }
 }
