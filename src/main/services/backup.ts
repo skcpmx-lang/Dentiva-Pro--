@@ -110,21 +110,23 @@ export async function createBackup(ctx: AppContext, actor: Actor | null, type: '
   const now = ctx.clock()
   const folder = backupFolder(ctx)
   await mkdir(folder, { recursive: true })
-  const filename = backupFileName(now, type)
+  let filename = backupFileName(now, type)
+  // Two backups within the same second (e.g. pre-restore + manual) get a suffix
+  // instead of failing.
+  for (let dup = 2; statSyncQuiet(join(folder, filename)); dup++) {
+    filename = backupFileName(now, type).replace(/\.zip$/, `-${dup}.zip`)
+    if (dup > 999) throw errConflict('Too many backups created in the same second.')
+  }
   const zipPath = join(folder, filename)
-  if (statSyncQuiet(zipPath)) throw errConflict(`A backup named ${filename} already exists. Wait a second and try again.`)
 
   const tempDir = join(ctx.paths.tempDir, `backup-${now.getTime()}`)
   await mkdir(tempDir, { recursive: true })
   const dbSnapshot = join(tempDir, 'database.sqlite3')
   try {
     // Consistent online snapshot of the live database (WAL-safe).
-    ctx.db.prepare('BEGIN IMMEDIATE').run()
-    try {
-      ctx.db.exec(`VACUUM INTO '${dbSnapshot.replace(/'/g, "''")}'`)
-    } finally {
-      ctx.db.prepare('COMMIT').run()
-    }
+    // VACUUM INTO is a single atomic statement and cannot run inside an
+    // explicit transaction, so it is issued bare.
+    ctx.db.exec(`VACUUM INTO '${dbSnapshot.replace(/'/g, "''")}'`)
 
     // Build the manifest with per-file checksums.
     const files: Manifest['files'] = []
