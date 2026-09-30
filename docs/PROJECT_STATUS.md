@@ -31,7 +31,7 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Current Task
 
-1. CI run 36727894316 (8691030) FALSIFIED the round-4 system-font hypothesis: system-font Bengali templates still fail (geometry 11/29, packaged 29/30 — same single print step), while that run's data-URL-webfont diagnostic page became the ONLY Bengali document ever printed on this stack. Round-5 fix committed: print documents embed fonts as base64 DATA-URL @font-face rules (AD-032) + full attribution probe matrix (P1–P11) + Windows error-toast capture in the packaged print step — push and watch the next run.
+1. CI run 36730497756 (453d373): ALL 10 attribution probes printed ✓ (incl. the exact system-font page that failed the previous run, and the real Bengali rx with a system stack + 800ms settle — P10) while the same Bengali templates through renderPdf without a settle still fail → the missing ingredient is a PAINTED FRAME + settle, not the font strategy. Round-6 fix committed (AD-033): renderPdf waits fonts.ready → 2×rAF → 800ms settle, printToPDF bounded at 25s; quadrant probes P12–P14 added; packaged print-step toast capture fixed. Push and watch the next run.
 
 ## Next Tasks
 
@@ -42,7 +42,10 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Failed Tests / Unresolved Issues
 
-- **36727894316 (8691030): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 11/29. Round-5 root cause + fix (not yet CI-verified):**
+- **36730497756 (453d373): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 11/29. Round-6 root cause + fix (not yet CI-verified):**
+  - Every probe printed (P1–P11 all ✓): the system-font page that failed in the previous run now passes; the real Bengali rx prints via a manual window with a system stack + 800ms settle (P10); the all-Latin rx prints through renderPdf itself (P7). Only renderPdf WITHOUT a settle on Bengali templates fails — on both font strategies. Verdict: the compositor serializes the page as-rendered; Bengali shaping/relayout can still be pending at fonts.ready.
+  - FIX (AD-033): renderPdf waits fonts.ready → two requestAnimationFrames (painted frame) → 800ms settle; printToPDF bounded at 25s (the packaged Windows step showed a silent 30s hang — no PDF, no error toast — which the bound converts into a visible error). Quadrant probes P12/P13/P14 (fonts × settle on the real template) added; P2/P3/P4b/P6/P9 dropped as answered.
+- **36727894316 (8691030): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 11/29. Round-5 root cause + fix (confirmed partially — data-URL fonts alone insufficient):**
   - System-font strategy falsified — real templates with NO webfonts still failed on both platforms; the run's mixed-page diagnostic (data-URL webfont + system-font paragraphs) printed, the ONLY Bengali print success on this stack. Differential verdict refined: protocol-delivered webfonts never print (compositor cannot re-fetch through the custom scheme); system Bengali fonts failed too; data-URL webfonts print.
   - FIX (AD-032): PrintManager inlines the bundled Noto Sans Bengali TTF subsets as base64 data-URL @font-face rules (unicode-ranged, ~700KB under the 2MB cap). Attribution probes P1–P11 added to the geometry suite as informational cases (font-resolution canvas report, content/timing/option matrix, run-36727894316 repro). Packaged E2E print step now captures the app's error toast for a Windows-side signature.
 - **36726128680 (2baf949): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 10/28 (TTF did not fix webfont printing). Round-4 root cause + fix (confirmed falsified by 36727894316):**
@@ -72,8 +75,8 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Last Verified Commit
 
-- `8691030` (pushed): verify ✓, windows-installer ✓, packaged-E2E 29/30, geometry 11/29 (system-font strategy falsified; data-URL diagnostic printed). Round-5 fix (data-URL embedded fonts, AD-032 + probe matrix) sits locally on top, pending push + CI.
-- Local gate on the round-5 fix: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ geometry bundle esbuild ✓.
+- `453d373` (pushed): verify ✓, windows-installer ✓, packaged-E2E 29/30, geometry 11/29 (all probes ✓, real renderPdf-without-settle cases ✘). Round-6 fix (painted-frame + settle + 25s bound, AD-033) sits locally on top, pending push + CI.
+- Local gate on the round-6 fix: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ geometry bundle esbuild ✓.
 - Previous full green: `ff258bd` / run 36696431273 (verify + e2e smoke, before Windows jobs existed).
 
 ## Build Status
@@ -84,7 +87,7 @@ Sandbox-local gate on 236e84c (all green, verified 2026-09-30):
 - `npm test`: **152/152 across 13 files**.
 - `npm run build`: succeeds.
 - `npm run dist`: not runnable in sandbox (no Windows/electron-builder targets here); performed on CI `windows-installer` job.
-- GitHub Actions: 36719098611 → 36727894316 (five runs): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30 → 29/30 → **29/30**; e2e geometry 16→10→10→11/29 — the print pipeline defect is differentially attributed (protocol webfonts never print; system Bengali fonts failed; data-URL webfonts print) and the AD-032 fix is pending CI. Next run must confirm all four green.
+- GitHub Actions: 36719098611 → 36730497756 (six runs): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30 → 29/30 → 29/30 → **29/30**; e2e geometry 16→10→10→11→11/29 — attributed to printing before the page has a painted, settled frame (complex-script relayout pending at fonts.ready); AD-033 fix pending CI. Next run must confirm all four green.
 
 ## Release Status
 

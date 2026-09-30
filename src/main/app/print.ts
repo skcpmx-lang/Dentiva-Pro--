@@ -60,6 +60,28 @@ const BENGALI_RANGE = 'U+0964-0965, U+0980-09FE, U+20B9'
 const LATIN_RANGE = 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'
 
 /**
+ * @font-face rules inlining the bundled Noto Sans Bengali TTFs as base64
+ * data URLs (see injectPrintFonts for why data URLs specifically). Exported
+ * so the e2e geometry probes can reproduce the exact production CSS.
+ */
+export function buildPrintFontFaceCss(dir: string): string {
+const faces: string[] = []
+for (const subset of ['bengali', 'latin'] as const) {
+  for (const weight of [400, 500, 600, 700] as const) {
+    const file = `noto-sans-bengali-${subset}-${weight}-normal.ttf`
+    try {
+      const b64 = readFileSync(join(dir, file)).toString('base64')
+      const range = subset === 'bengali' ? BENGALI_RANGE : LATIN_RANGE
+      faces.push(`@font-face { font-family: 'Noto Sans Bengali'; src: url(data:font/ttf;base64,${b64}) format('truetype'); font-weight: ${weight}; font-style: normal; unicode-range: ${range}; }`)
+    } catch {
+      // Font file missing — degrade to the system stack.
+    }
+  }
+}
+return faces.join('\n')
+}
+
+/**
  * Print pipeline (docs/PRINT_SPECIFICATION.md):
  * renderer composes semantic HTML → hidden window renders it → printToPDF
  * produces the canonical document (preview == output) → print via the same
@@ -71,30 +93,12 @@ export class PrintManager {
 
   constructor(private ctx: AppContext, private fontsDir?: string) {}
 
-  /**
-   * @font-face rules inlining the bundled Noto Sans Bengali TTFs as base64
-   * data URLs (see injectPrintFonts for why data URLs specifically). Built
-   * once, cached. If the font files are unavailable the CSS degrades to an
-   * empty string and the system-font stack applies (printing Bengali may
-   * then fail on this Electron build — see PRINT_SPECIFICATION.md).
-   */
+  /** Cached buildPrintFontFaceCss for this instance's font directory. */
   private buildFontFaceCss(): string {
-    if (this.fontFaceCss !== null) return this.fontFaceCss
-    const dir = this.fontsDir ?? (app.isPackaged ? join(process.resourcesPath, 'fonts') : join(app.getAppPath(), 'resources', 'fonts'))
-    const faces: string[] = []
-    for (const subset of ['bengali', 'latin'] as const) {
-      for (const weight of [400, 500, 600, 700] as const) {
-        const file = `noto-sans-bengali-${subset}-${weight}-normal.ttf`
-        try {
-          const b64 = readFileSync(join(dir, file)).toString('base64')
-          const range = subset === 'bengali' ? BENGALI_RANGE : LATIN_RANGE
-          faces.push(`@font-face { font-family: 'Noto Sans Bengali'; src: url(data:font/ttf;base64,${b64}) format('truetype'); font-weight: ${weight}; font-style: normal; unicode-range: ${range}; }`)
-        } catch {
-          // Font file missing — degrade to the system stack.
-        }
-      }
+    if (this.fontFaceCss === null) {
+      const dir = this.fontsDir ?? (app.isPackaged ? join(process.resourcesPath, 'fonts') : join(app.getAppPath(), 'resources', 'fonts'))
+      this.fontFaceCss = buildPrintFontFaceCss(dir)
     }
-    this.fontFaceCss = faces.join('\n')
     return this.fontFaceCss
   }
 
@@ -137,13 +141,57 @@ export class PrintManager {
         win.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5000))
       ])
-      const pdf = await win.webContents.printToPDF({
-        printBackground: true,
-        preferCSSPageSize: true,
-        landscape: opts.landscape === true,
-        scale: scale / 100,
-        pageSize: { width: Math.round(size.width * 1000), height: Math.round(size.height * 1000) },
-        margins: { top: 0, bottom: 0, left: 0, right: 0 }
+      // Chromium's print compositor serializes the page AS RENDERED: when
+      // fonts.ready resolves, complex-script shaping and the relayout it
+      // triggers can still be pending, and printing that in-between state
+      // makes the compositor reject the page ("CompositePages: Page reading
+      // failed" → "Printing failed"). Differential evidence (run
+      // 36730497756): the same Bengali prescription prints reliably after an
+      // 800ms settle (probe P10) and fails without it, on both font
+      // strategies. Two requestAnimationFrames guarantee a painted frame;
+      // the settle covers late shaping/relayout.
+      await Promise.race([
+        win.webContents.executeJavaScript(
+          'document.fonts.ready.then(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))',
+          true
+        ),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5000))
+      ])
+      await new Promise((r) => setTimeout(r, 800))
+      // printToPDF can hang (packaged Windows run 36730497756 produced no
+      // PDF AND no error for 30s) — bound it so the failure surfaces to the
+      // caller instead of stalling the flow silently.
+      const pdf = await new Promise<Buffer>((resolve, reject) => {
+        let done = false
+        const timer = setTimeout(() => {
+          if (!done) {
+            done = true
+            reject(new Error('Print timed out after 25 seconds.'))
+          }
+        }, 25_000)
+        win.webContents.printToPDF({
+          printBackground: true,
+          preferCSSPageSize: true,
+          landscape: opts.landscape === true,
+          scale: scale / 100,
+          pageSize: { width: Math.round(size.width * 1000), height: Math.round(size.height * 1000) },
+          margins: { top: 0, bottom: 0, left: 0, right: 0 }
+        }).then(
+          (b) => {
+            if (!done) {
+              done = true
+              clearTimeout(timer)
+              resolve(b)
+            }
+          },
+          (e) => {
+            if (!done) {
+              done = true
+              clearTimeout(timer)
+              reject(e instanceof Error ? e : new Error(String(e)))
+            }
+          }
+        )
       })
       writeFileSync(pdfPath, pdf)
       const pages = countPdfPages(pdf)

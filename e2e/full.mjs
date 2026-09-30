@@ -354,7 +354,7 @@ async function main() {
       if (now.length > 0) { pdf = join(tempDir, now[0]); break }
       // capture any error toast so the failure carries the renderer/main
       // error signature (printToPDF rejection message) instead of a timeout
-      const t = await page.locator('.toast, .toast-error, [class*="toast" i]').allTextContents().catch(() => [])
+      const t = await page.locator('.toast').allTextContents().catch(() => [])
       if (t.length > 0) toastText = t.join(' | ').slice(0, 300)
     }
     if (!pdf) throw new Error(`no new PDF appeared in the app temp dir after clicking Print${toastText ? ` — app error: ${toastText}` : ''}`)

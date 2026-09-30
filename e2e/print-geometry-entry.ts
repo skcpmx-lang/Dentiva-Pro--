@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { BrowserWindow } from 'electron'
 import { buildPaths } from '../src/main/core/paths'
-import { PrintManager, countPdfPages, pdfFirstPageSizePoints, readPdfForTest } from '../src/main/app/print'
+import { PrintManager, buildPrintFontFaceCss, countPdfPages, pdfFirstPageSizePoints, readPdfForTest } from '../src/main/app/print'
 import { registerSafeProtocol, registerSchemePrivilege } from '../src/main/app/protocol'
 import { renderPrescription, renderInvoice, renderReceipt, renderReport } from '@shared/print'
 import type { RxPrintData, InvoicePrintData, PrintDoc } from '@shared/print'
@@ -192,8 +192,6 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
     }
   }
   const stackCss = "html, body { font-family: 'Noto Sans Bengali', 'Nirmala UI', 'Inter', system-ui, sans-serif; }"
-  const minimalHtml = (extraCss: string, body: string) =>
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page { size: A4; margin: 0 }${extraCss}</style></head><body>${body}</body></html>`
   const diagTtf = readFileSync(join(opts.fontsDir, 'noto-sans-bengali-bengali-400-normal.ttf')).toString('base64')
 
   // Control — the known-passing minimal page (gating).
@@ -219,18 +217,8 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
     recordInfo('font resolution report (canvas widths)', false, e instanceof Error ? e.message : String(e))
   }
 
-  // P2 — the known-passing minimal page + ONE Bengali run (default fonts).
-  await probePrint('P2: minimal + Bengali text, default fonts', minimalHtml('', '<h1>Minimal print test</h1><p>Plain Latin content, default fonts only. বাংলা পরীক্ষা</p>'))
-  // P3 — minimal page + the production font stack, Latin only.
-  await probePrint('P3: minimal + font stack, Latin only', minimalHtml(stackCss, '<h1>Minimal print test</h1><p>Plain Latin content only.</p>'))
   // P4 — system-font stack + Bengali-only paragraph (the strategy that failed).
   await probePrint('P4: font stack + Bengali-only paragraph', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`)
-  // P4b — same, but the paragraph also contains a Latin word.
-  await probePrint('P4b: font stack + Bengali paragraph with Latin word', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা system</p></body></html>`)
-  // P9 — P4 with an 800ms settle before printing (renderer-race hypothesis).
-  await probePrint('P9: font stack + Bengali, 800ms settle', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, { settleMs: 800 })
-  // P6 — P4 without preferCSSPageSize (print-option hypothesis).
-  await probePrint('P6: font stack + Bengali, no preferCSSPageSize', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, { preferCss: false })
   // P5 — Bengali via a data-URL webfont only (the delivery that printed).
   await probePrint('P5: Bengali via data-URL webfont only', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@font-face { font-family: 'DiagWebFont'; src: url(data:font/ttf;base64,${diagTtf}) format('truetype'); } p { font-family: 'DiagWebFont'; }</style></head><body><p>বাংলা পরীক্ষা webfont</p></body></html>`, { settleMs: 300 })
 
@@ -275,6 +263,14 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
     const rxHtml = renderPrescription(rxData()).html.replace(/<head([^>]*)>/i, (m) => `${m}<meta charset="utf-8"><style>${stackCss}</style>`)
     await probePrint('P10: real rx template, system stack, 800ms settle', rxHtml, { settleMs: 800 })
   }
+  // Settle quadrant on the real Bengali template (fonts × settle):
+  //   system stack + settle = P10 ✓ | system stack + no settle = P13
+  //   production css + settle = P14 | production css + no settle = P12
+  const prodCss = `${buildPrintFontFaceCss(opts.fontsDir)}\n${stackCss}`
+  const rxWith = (css: string) => renderPrescription(rxData()).html.replace(/<head([^>]*)>/i, (m) => `${m}<meta charset="utf-8"><style>${css}</style>`)
+  await probePrint('P12: Bengali rx + production data-URL font css, NO settle', rxWith(prodCss))
+  await probePrint('P13: Bengali rx + system stack, NO settle (36727894316 repro)', rxWith(stackCss))
+  await probePrint('P14: Bengali rx + production data-URL font css, 800ms settle', rxWith(prodCss), { settleMs: 800 })
 
   // P7 — the real pipeline (renderPdf, now with data-URL embedded fonts) on
   // an all-Latin prescription: if this prints, Bengali text is the trigger;
