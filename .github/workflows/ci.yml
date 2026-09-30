@@ -73,11 +73,13 @@ jobs:
       # Real Chromium printToPDF output: MediaBox geometry for every paper
       # size, Bengali font embedding, logo embedding, pagination, anti-abuse
       # guards. Drives the real PrintManager + dentiva-safe:// protocol.
+      # 24-bit xvfb is REQUIRED — the print compositor's bitmap readback fails
+      # at the default xvfb depth ("CompositePages: Page reading failed").
       - name: Run print/PDF geometry tests
         shell: bash
         run: |
           set -o pipefail
-          xvfb-run -a node e2e/print-geometry.mjs 2>&1 | tee print-geometry.log
+          xvfb-run -a --server-args="-screen 0 1280x800x24" node e2e/print-geometry.mjs 2>&1 | tee print-geometry.log
 
       # The build sandbox that drives this PR cannot reach Actions log/blob
       # storage, so on failure the tail of the log is posted here as a comment.
@@ -241,9 +243,9 @@ jobs:
           {
             echo "### 🤖 Automated packaged E2E failure log (commit \`${{ github.sha }}\`)"
             echo
-            echo '**full-e2e.log (tail)**'
+            echo '**full-e2e.log (last 400 lines)**'
             echo '```'
-            tail -n 120 full-e2e.log 2>/dev/null || true
+            tail -n 400 full-e2e.log 2>/dev/null || true
             echo '```'
           } > /tmp/fulle2e-failure.md
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/fulle2e-failure.md

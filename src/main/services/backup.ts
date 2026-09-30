@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import * as archiverNs from 'archiver'
 import extract from 'extract-zip'
+import { assertZipSafe } from './zipGuard'
 import type { AppContext, Actor } from '../core/context'
 import { errValidation, errNotFound, errConflict, errIo } from '@shared/errors'
 import type { BackupRecord } from '@shared/types'
@@ -243,6 +244,7 @@ async function verifyBackupIntegrity(zipPath: string): Promise<{ ok: boolean; me
     const tempDir = join(tmpdir(), `dentiva-verify-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
     await mkdir(tempDir, { recursive: true })
     try {
+      await assertZipSafe(zipPath) // symlink/traversal guard before any extraction
       await extract(zipPath, { dir: tempDir })
       const manifestRaw = await readFile(join(tempDir, 'manifest.json'), 'utf8')
       const manifest = JSON.parse(manifestRaw) as Manifest
@@ -309,9 +311,10 @@ export async function restoreBackup(
   if (!verify.ok) throw errIo(`Backup verification failed (${verify.message}). Restore aborted — your current data is untouched.`)
 
   const now = ctx.clock()
-  const staging = join(ctx.paths.tempDir, `restore-${now.getTime()}`)
-  await mkdir(staging, { recursive: true })
-  await extract(zipPath, { dir: staging })
+    const staging = join(ctx.paths.tempDir, `restore-${now.getTime()}`)
+    await mkdir(staging, { recursive: true })
+    await assertZipSafe(zipPath) // defense in depth (verify already guards)
+    await extract(zipPath, { dir: staging })
   const manifest = JSON.parse(await readFile(join(staging, 'manifest.json'), 'utf8')) as Manifest
   if (manifest.schemaVersion > currentVersion(ctx.db)) {
     await rm(staging, { recursive: true, force: true })

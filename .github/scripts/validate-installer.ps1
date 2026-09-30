@@ -74,17 +74,48 @@ Ok 'app.asar + uninstaller present'
 
 # ------------------------------------------------------------------ registry
 Step 'Uninstall registry entry (per-user)'
+# electron-builder's NSIS default uninstall DisplayName is
+# "${productName} ${version}" (NsisTarget.js:473) — i.e. "Dentiva Pro 1.0.0".
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
-$entry = Get-ChildItem $uninstallKey | Where-Object { $_.GetValue('DisplayName') -eq $productName } | Select-Object -First 1
-if (-not $entry) { Die "No per-user uninstall entry with DisplayName '$productName'" }
+$entry = $null
+$deadline = (Get-Date).AddSeconds(30)
+while (-not $entry -and ((Get-Date) -lt $deadline)) {
+  $entry = Get-ChildItem $uninstallKey -ErrorAction SilentlyContinue |
+    Where-Object { $_.GetValue('DisplayName') -like "$productName*" } |
+    Select-Object -First 1
+  if (-not $entry) { Start-Sleep -Seconds 2 }
+}
+if (-not $entry) {
+  # Diagnostics: show every Dentiva-related uninstall entry in both hives.
+  Write-Output '  [diag] Dentiva-related uninstall entries found:'
+  $found = $false
+  foreach ($hive in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+    foreach ($k in (Get-ChildItem $hive -ErrorAction SilentlyContinue)) {
+      $dn = $k.GetValue('DisplayName')
+      if ($dn -and $dn -like '*Dentiva*') {
+        Write-Output "  [diag] $hive\$($k.PSChildName) => DisplayName='$dn' Version='$($k.GetValue('DisplayVersion'))' Publisher='$($k.GetValue('Publisher'))'"
+        $found = $true
+      }
+    }
+  }
+  if (-not $found) { Write-Output '  [diag] (none in HKCU, HKLM or WOW6432Node)' }
+  Die "No per-user uninstall entry with DisplayName like '$productName*' after silent install"
+}
+$display = $entry.GetValue('DisplayName')
+if ($display -ne "$productName $expectedVersion") { Die "Registry DisplayName is '$display' (expected '$productName $expectedVersion')" }
 if ($entry.GetValue('Publisher') -ne $expectedPublisher) { Die "Registry Publisher is '$($entry.GetValue('Publisher'))' (expected '$expectedPublisher')" }
 if ($entry.GetValue('DisplayVersion') -ne $expectedVersion) { Die "Registry DisplayVersion is '$($entry.GetValue('DisplayVersion'))' (expected '$expectedVersion')" }
-Ok "DisplayName=$($entry.GetValue('DisplayName'))  Publisher=$($entry.GetValue('Publisher'))  DisplayVersion=$($entry.GetValue('DisplayVersion'))"
+Ok "DisplayName=$display  Publisher=$($entry.GetValue('Publisher'))  DisplayVersion=$($entry.GetValue('DisplayVersion'))"
 
 # ----------------------------------------------------------------- shortcuts
 Step 'Shortcuts'
 $desktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "$productName.lnk"
-$startMenuLnk = Join-Path ([Environment]::GetFolderPath('StartMenu')) "Programs\Dentiva Pro\$productName.lnk"
+# Without nsis.menuCategory the shortcut is created directly in Programs;
+# with one it lives in a subfolder — accept either (electron-builder common.nsh).
+$startMenuLnk = Join-Path ([Environment]::GetFolderPath('StartMenu')) "Programs\$productName.lnk"
+if (-not (Test-Path $startMenuLnk)) {
+  $startMenuLnk = Join-Path ([Environment]::GetFolderPath('StartMenu')) "Programs\$productName\$productName.lnk"
+}
 if (-not (Test-Path $desktopLnk)) { Die "Desktop shortcut missing: $desktopLnk" }
 if (-not (Test-Path $startMenuLnk)) { Die "Start Menu shortcut missing: $startMenuLnk" }
 $sh = New-Object -ComObject WScript.Shell
@@ -113,8 +144,8 @@ Start-Process -FilePath $uninstExe -ArgumentList '/S' -Wait
 $deadline = (Get-Date).AddSeconds(45)
 while ((Test-Path $appExe) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
 if (Test-Path $appExe) { Die "App exe still present after silent uninstall: $appExe" }
-$entry = Get-ChildItem $uninstallKey | Where-Object { $_.GetValue('DisplayName') -eq $productName } | Select-Object -First 1
-if ($entry) { Die 'Uninstall registry entry still present after silent uninstall' }
+$entry = Get-ChildItem $uninstallKey -ErrorAction SilentlyContinue | Where-Object { $_.GetValue('DisplayName') -like "$productName*" } | Select-Object -First 1
+if ($entry) { Die "Uninstall registry entry still present after silent uninstall ($($entry.GetValue('DisplayName')))" }
 Ok 'App files and registry entry removed by silent uninstall'
 
 Write-Output ""; Write-Output "INSTALLER VALIDATION PASSED"

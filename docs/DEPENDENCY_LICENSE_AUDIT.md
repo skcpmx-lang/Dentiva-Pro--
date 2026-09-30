@@ -7,6 +7,7 @@ Runtime and development dependencies with purpose, license, and commercial compa
 | Package | Version (major) | License | Purpose | Commercial use | Attribution |
 |---|---|---|---|---|---|
 | better-sqlite3 | 13 | MIT | Embedded SQLite driver (WAL, transactions) | ✅ | Notice file |
+| yauzl | 2.10.0 (pinned) | MIT | ZIP central-directory safety scan before backup extraction (guards the extract-zip symlink advisory) | ✅ | Notice file |
 | zod | 3 | MIT | Schema validation at every service boundary | ✅ | Notice file |
 | archiver | 7 | MIT | Streaming ZIP creation (backups) | ✅ | Notice file |
 | extract-zip | 2 | MIT | Backup extraction (restore) | ✅ | Notice file |
@@ -25,6 +26,7 @@ electron (MIT), electron-vite (MIT), vite (MIT), @vitejs/plugin-react (MIT), ele
 ## Notes & Controls
 
 - No copyleft (GPL/AGPL/SSPL) dependencies. No dependency requires source disclosure of Dentiva Pro. No paid APIs or services.
+- **Known advisory, assessed and mitigated:** `extract-zip 2.0.1` carries an open HIGH advisory (unvalidated symlink path traversal; no upstream fix exists as of 2026-09). Dentiva Pro only extracts archives the app itself created and recorded in `backups_metadata`, so exploitation requires the same filesystem write access as modifying the database directly (not a trust-boundary crossing). Defense in depth: `assertZipSafe` (src/main/services/zipGuard.ts) scans the archive's central directory via yauzl BEFORE any extraction and rejects symlink and unsafe-path entries; yauzl itself also refuses traversal entry names. Covered by tests/zip-guard.test.ts. See RISK_REGISTER R-16.
 - Zero network calls at runtime: the shipped app performs no outbound requests (verified in security audit).
 - `npm audit` runs in CI; high/critical advisories block the release gate.
 - Dependency count intentionally minimal (10 runtime packages + fonts); each is justified above. No unused dependencies (dead-dependency scan in release checklist).

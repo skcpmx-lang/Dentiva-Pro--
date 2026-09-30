@@ -57,16 +57,19 @@ async function main() {
   if (!existsSync(String(electronBin))) die(`electron binary not found at ${electronBin}`)
 
   // 3. Run inside Electron. --no-sandbox: CI containers cannot use the SUID
-  //    chrome-sandbox helper (this is the test-runner electron binary, not the
-  //    packaged app — the shipped app keeps its sandbox).
+  //    chrome-sandbox helper; --disable-gpu: the print compositor's bitmap
+  //    readback fails under xvfb/software-GL otherwise ("CompositePages: Page
+  //    reading failed"). This is the test-runner binary only — the shipped
+  //    app keeps its sandbox and default acceleration.
   console.log('→ running print geometry suite inside Electron…\n')
-  const run = spawnSync(String(electronBin), ['--no-sandbox', join(root, 'e2e', 'print-geometry-main.cjs')], {
+  const run = spawnSync(String(electronBin), ['--no-sandbox', '--disable-gpu', join(root, 'e2e', 'print-geometry-main.cjs')], {
     cwd: root,
     stdio: ['ignore', 'inherit', 'inherit'],
     env: {
       ...process.env,
       PG_BUNDLE: outfile,
       PG_RESULT: resultPath,
+      PG_CASES: `${resultPath}.cases`,
       PG_DATA: dataDir,
       PG_FONTS: fontsDir,
       NODE_ENV: 'test',
@@ -80,7 +83,13 @@ async function main() {
   try {
     result = JSON.parse(readFileSync(resultPath, 'utf8'))
   } catch {
-    die(`no result file produced (electron status=${run.status}, signal=${run.signal})`)
+    // Electron crashed mid-suite: fall back to the per-case JSONL log the
+    // entry writes as it goes, so partial results are still reported.
+    let partial = []
+    try {
+      partial = readFileSync(`${resultPath}.cases`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    } catch {}
+    result = { cases: partial, crashed: `electron exited before writing results (status=${run.status}, signal=${run.signal}) — ${partial.length} case(s) completed before the crash` }
   }
 
   const cases = result.cases ?? []

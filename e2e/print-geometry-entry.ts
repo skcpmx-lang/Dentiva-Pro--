@@ -7,7 +7,7 @@
  * dentiva-safe:// protocol and asserts the geometry and robustness of the
  * PDFs Chromium actually produces.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildPaths } from '../src/main/core/paths'
 import { PrintManager, countPdfPages, pdfFirstPageSizePoints, readPdfForTest } from '../src/main/app/print'
@@ -22,6 +22,14 @@ export { registerSchemePrivilege }
 
 export interface CaseResult { name: string; ok: boolean; detail?: string }
 export interface SuiteResult { cases: CaseResult[]; crashed?: string }
+
+// Crash resilience: every case is appended to this log as it completes, so a
+// mid-suite Electron crash still leaves the completed cases reportable.
+const caseLogPath = process.env.PG_CASES
+function logCase(c: CaseResult): void {
+  if (!caseLogPath) return
+  try { appendFileSync(caseLogPath, `${JSON.stringify(c)}\n`) } catch { /* best effort */ }
+}
 
 /** Minimal valid PNG (96×64, teal with a white disc) used as the test clinic logo. */
 const TEST_LOGO_PNG_BASE64 =
@@ -96,7 +104,9 @@ const invoiceData = (over: Partial<InvoicePrintData> = {}): InvoicePrintData => 
 export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: string }): Promise<SuiteResult> {
   const cases: CaseResult[] = []
   const record = (name: string, ok: boolean, detail?: string) => {
-    cases.push({ name, ok, detail })
+    const c: CaseResult = { name, ok, ...(detail ? { detail } : {}) }
+    cases.push(c)
+    logCase(c)
     console.log(`${ok ? '✔' : '✘'} ${name}${!ok && detail ? ` — ${detail}` : ''}`)
   }
   const expectThrows = async (name: string, fn: () => unknown | Promise<unknown>, match?: RegExp) => {

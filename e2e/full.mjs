@@ -74,21 +74,51 @@ const fail = (name, detail) => { results.push({ name, ok: false, detail }); cons
 async function pageDiagnostics() {
   try {
     return await page.evaluate(() => {
+      const modals = Array.from(document.querySelectorAll('.modal-head')).map((m) => m.textContent?.trim()).filter(Boolean)
       const toasts = Array.from(document.querySelectorAll('.toast, [class*="toast"]')).map((t) => t.textContent?.trim()).filter(Boolean).join(' | ')
       const phaseHint = document.querySelector('.sidebar') ? 'app'
         : document.querySelector('.auth-card') ? 'login/lock'
           : document.querySelector('.setup-card') ? 'setup-wizard'
             : document.querySelector('.spinner') ? 'loading-spinner' : 'unknown'
       const text = (document.body?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300)
-      return `[page: ${phaseHint}${toasts ? `; toasts: ${toasts}` : ''}; text: ${text}]`
+      return `[page: ${phaseHint}; route: ${window.location.hash}; open modals: ${modals.length ? modals.join(' / ') : 'none'}${toasts ? `; toasts: ${toasts}` : ''}; text: ${text}]`
     })
   } catch (e) {
     return `[page state unavailable: ${e instanceof Error ? e.message : String(e)} — renderer may have crashed]`
   }
 }
 
+/**
+ * A failed step can leave a modal open, which would block every later step's
+ * clicks (the modal overlay covers the whole viewport). Each step therefore
+ * starts by dismissing leftover modals — the step that left them open has
+ * already failed and reported the modal title in its own diagnostics.
+ */
+async function dismissModals() {
+  for (let i = 0; i < 4; i++) {
+    const open = await page.locator('.modal-head').count().catch(() => 0)
+    if (open === 0) return
+    const titles = await page.locator('.modal-head').allTextContents().catch(() => [])
+    console.log(`  [recover] dismissing leftover modal: ${titles.join(' / ') || '(untitled)'}`)
+    await page.keyboard.press('Escape').catch(() => {})
+    await page.waitForTimeout(500)
+    // dialogs without an Escape path: try Cancel, then the X close button
+    for (const sel of ['.modal button:text-is("Cancel")', '.modal button[aria-label="Close"]']) {
+      if ((await page.locator('.modal-head').count().catch(() => 0)) === 0) return
+      const btn = page.locator(sel).first()
+      if ((await btn.count().catch(() => 0)) > 0) {
+        await btn.click({ force: true }).catch(() => {})
+        await page.waitForTimeout(400)
+      }
+    }
+  }
+}
+
 const step = (name, fn) =>
-  fn()
+  (async () => {
+    await dismissModals()
+  })()
+    .then(() => fn())
     .then(() => pass(name))
     .catch(async (err) => {
       const diag = await pageDiagnostics()
@@ -182,7 +212,7 @@ async function main() {
     await page.locator('input[placeholder="Treatment name"]').first().fill('Scaling & polishing')
     await page.locator('input[title="Unit price in ৳"]').first().fill('1500')
     await page.getByRole('button', { name: /Save visit/ }).click()
-    await page.waitForSelector('.modal >> text=New visit', { state: 'detached', timeout: 15_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
     await page.waitForSelector('text=Scaling & polishing', { timeout: 10_000 })
   })
 
@@ -209,7 +239,7 @@ async function main() {
     await page.locator('input[placeholder="Days"]').first().fill('7')
     await page.locator('textarea[placeholder="General advice printed on the prescription"]').fill('দিনে দুবার ব্রাশ করুন।')
     await page.getByRole('button', { name: /Save & print/ }).click()
-    await page.waitForSelector('.modal >> text=New prescription', { state: 'detached', timeout: 20_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 20_000 })
     await page.waitForSelector('text=Amoxicillin', { timeout: 10_000 })
   })
 
@@ -222,8 +252,12 @@ async function main() {
     await page.locator('input[placeholder="Description"]').first().fill('Scaling & polishing — সম্পূর্ণ')
     await page.locator('.modal .row input[type="number"]').nth(1).fill('1500') // unit price (after qty)
     await page.getByRole('button', { name: /Create invoice/ }).click()
-    await page.waitForSelector('.modal >> text=New invoice', { state: 'detached', timeout: 20_000 })
-    await page.waitForSelector('text=Scaling & polishing', { timeout: 10_000 })
+    // the app opens the new invoice's detail modal after creation (onOpen)
+    await page.locator('.modal-head').filter({ hasText: /INV-/ }).waitFor({ timeout: 15_000 })
+    await page.waitForSelector('text=Scaling & polishing', { timeout: 10_000 }) // line item inside the detail
+    await page.keyboard.press('Escape') // close the detail modal
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 10_000 })
+    await page.locator('.tbl tbody tr', { hasText: 'INV-' }).first().waitFor({ timeout: 10_000 })
   })
 
   await step('payments: record a partial payment against the invoice', async () => {
@@ -233,8 +267,9 @@ async function main() {
     await page.locator('.modal button', { hasText: 'Select' }).first().click()
     await page.locator('.modal input[type="number"]').first().fill('500')
     await page.getByRole('button', { name: 'Record payment' }).click()
-    await page.waitForSelector('.modal >> text=Record payment', { state: 'detached', timeout: 15_000 })
-    await page.waitForSelector('text=/Partially paid|partial/i', { timeout: 10_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
+    // financial summary on the profile must now show the ৳500 payment
+    await page.waitForSelector('text=৳500', { timeout: 10_000 })
   })
   await shot('billing-after-payment')
 
@@ -244,8 +279,9 @@ async function main() {
     await page.getByRole('button', { name: 'Add to queue' }).click()
     await page.locator('input[placeholder="Search patient…"]').fill('আব্দুল')
     await page.locator('.modal button:has(b)', { hasText: PATIENT.name }).first().click()
-    await page.getByRole('button', { name: 'Add to queue', exact: true }).click()
-    await page.waitForSelector('.modal >> text=Add patient to queue', { state: 'detached', timeout: 15_000 })
+    // scope to the modal footer: the page-level opener is also named "Add to queue"
+    await page.locator('.modal-foot button', { hasText: 'Add to queue' }).click()
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
     for (const label of ['Call patient', 'Start treatment', 'Move to billing', 'Finish']) {
       await page.getByRole('button', { name: label }).first().click()
       await page.waitForTimeout(600)
@@ -255,6 +291,7 @@ async function main() {
 
   /* ---------------- referrals + about ---------------- */
   await step('referrals: record a referral from the patient profile and manage its status', async () => {
+    await page.locator('.nav-item', { hasText: 'Patients' }).click()
     await page.locator('.tbl tbody tr', { hasText: PATIENT.name }).first().click()
     await page.waitForSelector('text=Referrals')
     await page.getByRole('button', { name: 'New referral' }).click()
@@ -262,7 +299,7 @@ async function main() {
     await page.locator('input[placeholder="e.g. ঢাকা মেডিকেল কলেজ হাসপাতাল"]').fill('ঢাকা মেডিকেল কলেজ হাসপাতাল')
     await page.locator('textarea[placeholder*="জটিল শিকড়"]').fill('জটিল কেস — এন্ডোডন্টিস্টের পরামর্শ প্রয়োজন')
     await page.getByRole('button', { name: 'Save referral' }).click()
-    await page.waitForSelector('.modal >> text=New referral', { state: 'detached', timeout: 15_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
     await page.waitForSelector('text=ডা. সালাহউদ্দিন আহমেদ', { timeout: 10_000 })
     await page.getByRole('button', { name: 'Complete', exact: true }).click()
     await page.waitForSelector('.badge:text-is("completed")', { timeout: 10_000 })
@@ -282,7 +319,7 @@ async function main() {
     await page.locator('.modal button:has(b)', { hasText: PATIENT.name }).first().click()
     await page.locator('input[placeholder="e.g. RCT sitting 2"]').fill('ফলোআপ ভিজিট')
     await page.getByRole('button', { name: 'Create', exact: true }).click()
-    await page.waitForSelector('.modal >> text=New appointment', { state: 'detached', timeout: 15_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
     await page.waitForSelector('text=ফলোআপ ভিজিট', { timeout: 10_000 })
   })
 
@@ -372,7 +409,7 @@ async function main() {
     await row.locator('button').nth(1).click() // void (ban icon)
     await page.locator('.modal textarea').fill('ভুল ইনভয়েস — পুনরায় ইস্যু করা হবে')
     await page.getByRole('button', { name: 'Void invoice' }).click()
-    await page.waitForSelector('.modal', { state: 'detached', timeout: 15_000 })
+    await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
     await page.locator('.badge', { hasText: /^void$/ }).first().waitFor({ timeout: 10_000 })
   })
 
