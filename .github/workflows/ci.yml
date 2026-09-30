@@ -94,3 +94,82 @@ jobs:
           name: e2e-artifacts
           path: e2e/artifacts/
           if-no-files-found: ignore
+
+  windows-installer:
+    name: Windows installer (NSIS x64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Build NSIS installer (electron-builder)
+        shell: pwsh
+        run: |
+          npm run dist 2>&1 | Tee-Object -FilePath dist.log
+          exit $LASTEXITCODE
+
+      # Audits app.asar: no dev/test/docs/source files, no sourcemaps,
+      # no secret-shaped strings, native prebuild unpacked, Bengali fonts present.
+      - name: Audit packaged contents (asar)
+        shell: pwsh
+        run: |
+          node e2e/asar-audit.mjs release/win-unpacked 2>&1 | Tee-Object -FilePath asar-audit.log
+          exit $LASTEXITCODE
+
+      # Metadata, SHA-256, silent install, shortcuts, registry, packaged-app
+      # launch, silent uninstall.
+      - name: Validate installer end to end
+        shell: pwsh
+        run: |
+          & ./.github/scripts/validate-installer.ps1 2>&1 | Tee-Object -FilePath installer-validation.log
+          if (Test-Path validation.failed) { exit 1 }
+
+      - name: Preserve installer artifact + SHA-256 checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            release/*.exe
+            release/*.sha256
+          if-no-files-found: error
+
+      # The build sandbox that drives this PR cannot reach Actions log/blob
+      # storage, so on failure the captured logs are posted here as a comment.
+      - name: Report installer job failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          {
+            echo "### 🤖 Automated Windows installer job failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '**dist.log (tail)**'
+            echo '```'
+            tail -n 40 dist.log 2>/dev/null || true
+            echo '```'
+            echo '**asar-audit.log (tail)**'
+            echo '```'
+            tail -n 30 asar-audit.log 2>/dev/null || true
+            echo '```'
+            echo '**installer-validation.log (tail)**'
+            echo '```'
+            tail -n 80 installer-validation.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/inst-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/inst-failure.md

@@ -27,10 +27,10 @@ extraResources:
       - "*.txt"
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
-  # icon: build/icon.ico  # drop a 256×256 .ico here before release
 
 nsis:
   oneClick: false
