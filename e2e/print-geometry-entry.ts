@@ -169,13 +169,13 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
       const id = randomUUID()
       const htmlPath = join(paths.tempDir, `${id}-fontdiag.html`)
       writeFileSync(htmlPath, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        @font-face { font-family: 'Noto Sans Bengali'; src: url('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.woff2') format('woff2'); }
+        @font-face { font-family: 'Noto Sans Bengali'; src: url('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.ttf') format('truetype'); }
         body { font-family: 'Noto Sans Bengali'; }
       </style></head><body><p id="t">বাংলা পরীক্ষা</p><script>
         window.__diag = { status: document.fonts.status }
         document.fonts.ready.then(() => { window.__diag.ready = true; window.__diag.statusAfter = document.fonts.status })
         Promise.all(Array.from(document.fonts).map((f) => f.load().then(() => 'ok', (e) => 'fail:' + (e && e.message ? e.message : e)))).then((r) => { window.__diag.loads = r })
-        fetch('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.woff2').then((r) => { window.__diag.fetchStatus = r.status }, (e) => { window.__diag.fetchStatus = 'err:' + (e && e.message ? e.message : e) })
+        fetch('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.ttf').then((r) => { window.__diag.fetchStatus = r.status }, (e) => { window.__diag.fetchStatus = 'err:' + (e && e.message ? e.message : e) })
       <\/script></body></html>`, 'utf8')
       await win.loadURL(`dentiva-safe://temp/${id}-fontdiag.html`)
       await new Promise((r) => setTimeout(r, 1500))

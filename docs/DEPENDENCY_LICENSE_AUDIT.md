@@ -17,7 +17,7 @@ Runtime and development dependencies with purpose, license, and commercial compa
 | lucide-react | 1 | ISC | Icon set (tree-shaken) | ✅ | Notice file |
 | dayjs | 1 | MIT | Date handling/formatting | ✅ | Notice file |
 | clsx | 2 | MIT | Class name composition | ✅ | Notice file |
-| **Noto Sans Bengali** (font files) | 5.x (fontsource build) | **SIL OFL 1.1** | Bundled Bengali font (UI + print fidelity) | ✅ (bundling allowed; OFL is not a software copyleft) | License file shipped in `resources/fonts` + About notices |
+| **Noto Sans Bengali** (font files) | 5.x (fontsource build; woff2 + losslessly converted ttf builds for print) | **SIL OFL 1.1** | Bundled Bengali font (UI + print fidelity) | ✅ (bundling allowed; OFL is not a software copyleft) | License file shipped in `resources/fonts` + About notices |
 
 ## Development dependencies (not shipped)
 

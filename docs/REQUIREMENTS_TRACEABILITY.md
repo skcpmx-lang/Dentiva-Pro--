@@ -154,11 +154,11 @@ Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Pass
 
 | ID | Requirement | Status | Evidence |
 |---|---|---|---|
-| REQ-PRN-001 | Reusable print system: profiles, paper sizes, margins, scale, PDF, Bengali | Tested | PrintManager (src/main/app/print.ts) over dentiva-safe://; printer_profiles table + printing service; **race fixed after CI diagnosis**: printToPDF was called before web fonts finished loading (compositor "Page reading failed" → "Printing failed") — renderPdf now awaits `document.fonts.ready` (bounded 5 s), the same fix Puppeteer applied before Page.printToPDF; geometry suite re-run pending |
+| REQ-PRN-001 | Reusable print system: profiles, paper sizes, margins, scale, PDF, Bengali | Tested | PrintManager (src/main/app/print.ts) over dentiva-safe://; printer_profiles table + printing service. **Root cause of the print failures pinned by differential CI diagnostics** (runs 36722132504/36723879956): pages whose only webfonts are WOFF2-sourced fail inside Chromium's print compositor ("Page reading failed" → printToPDF rejects) — reproduced on Linux CI and consistent with the packaged Windows app's invoice print producing no PDF. Fixes: print documents reference losslessly-converted TTF builds of the same bundled subsets; renderPdf awaits `document.fonts.ready` (bounded 5 s). Geometry suite + packaged print step re-run pending |
 | REQ-PRN-002 | Print preview: zoom, page navigation, paper/printer selection | In Progress | Silent print + save-PDF implemented (billing/prescriptions/receipts); interactive preview modal not implemented — documented gap |
 | REQ-PRN-003 | Prescription layout per spec §36 incl. signature area | Tested | print-templates signature test (≥22 mm clear space, name + degrees under rule) |
 | REQ-PRN-004 | Paper sizes A4/A5/thermal/mini/custom adapt without breakage | Tested | paperSizeMm table test + geometry suite (A4/A5/Letter/58 mm/80 mm/custom ×2/fallback; CI run pending) |
-| REQ-PRN-005 | Bundled Bengali font w/ fallback; Bengali print tested | Tested | Noto Sans Bengali 400–700 bundled as extraResources; font-embedding assertion in geometry suite + packaged-E2E PDF check (CI run pending) |
+| REQ-PRN-005 | Bundled Bengali font w/ fallback; Bengali print tested | Tested | Noto Sans Bengali 400–700 bundled as extraResources (WOFF2 for UI + TTF for print); font-embedding assertion in geometry suite + packaged-E2E PDF check (CI run pending) |
 | REQ-PRN-006 | No claim of universal printer compatibility; documented limits | Implemented | docs/PRINT_SPECIFICATION.md; physical printing EXTERNAL |
 
 ## Settings & misc

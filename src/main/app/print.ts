@@ -60,15 +60,22 @@ export class PrintManager {
     const pdfPath = join(this.ctx.paths.tempDir, `${id}.pdf`)
 
     // Inject the bundled font + reset CSS before the document's own styles.
+    // Print documents reference the TTF builds: differential CI diagnostics
+    // (print-geometry suite) showed that pages whose only webfonts are
+    // WOFF2-sourced fail inside Chromium's print compositor
+    // ("CompositePages: Page reading failed" → printToPDF rejects with
+    // "Printing failed") on Linux CI — and the packaged Windows app's invoice
+    // print produced no PDF the same way. TTF is the battle-tested format for
+    // print embedding. The app UI keeps the smaller WOFF2 files for display.
     const fontCss = `
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-400-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-latin-400-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-500-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-latin-500-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-600-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-latin-600-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-700-normal.woff2') format('woff2'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-latin-700-normal.woff2') format('woff2'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-400-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-latin-400-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-500-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-latin-500-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-600-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-latin-600-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-700-normal.ttf') format('truetype'); }
+      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-latin-700-normal.ttf') format('truetype'); }
     `
     const fullHtml = injectPrintFonts(html, fontCss)
     writeFileSync(htmlPath, fullHtml, 'utf8')

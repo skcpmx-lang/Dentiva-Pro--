@@ -31,7 +31,7 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Current Task
 
-1. CI run 36722132504 (32a43ca) diagnosed; second round of defect fixes committed — push and watch the next run (verify + e2e geometry + windows-packaged-e2e must all go green).
+1. CI run 36723879956 (c1c1bf1) diagnosed — packaged E2E 26/30, geometry differential delivered the print root cause. Third round of fixes committed (print fonts switch to TTF; three E2E assertion fixes) — push and watch the next run.
 
 ## Next Tasks
 
@@ -42,7 +42,10 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Failed Tests / Unresolved Issues
 
-- **36722132504 (32a43ca): verify ✓, windows-installer ✓, packaged E2E 23/30, e2e geometry ✗ (same signature). Round-2 root causes, all fixed locally (not yet CI-verified):**
+- **36723879956 (c1c1bf1): verify ✓, windows-installer ✓, packaged E2E 26/30, e2e geometry 10/28. Round-3 root causes, all fixed locally (not yet CI-verified):**
+  - *Geometry differential diagnostics pinned the print failure:* a page with NO webfonts prints fine (✔ minimal case), the dentiva-safe:// font fetch returns 200 (✔ Buffer protocol fix also eliminated the SIGTRAP/ERR_FAILED crash — all 28 cases now run), but **any page that uses a WOFF2-sourced webfont fails in the print compositor** ("Page reading failed" → printToPDF rejects). The packaged Windows app's invoice-print step (no PDF in temp dir after clicking Print) is consistent with the same root cause cross-platform. FIX: print documents now reference losslessly-converted TTF builds of the same bundled Noto Sans Bengali subsets (`format('truetype')`); UI keeps WOFF2. Provenance + rationale recorded in PRINT_SPECIFICATION.md.
+  - *Packaged E2E 26/30 — remaining 4 were one real print defect + three assertion mismatches (fixed):* visit treatment line is asserted on the Visits list (Treatments column); chart note field is an input with a placeholder (not a textarea); prescriptions list shows "1 item" not medicine names (assert the RX row instead). invoices ✓ payments ✓ invoice-void ✓ queue ✓ referrals ✓ appointments ✓ restore ✓ destructive ✓ all pass.
+- **36722132504 (32a43ca): verify ✓, windows-installer ✓, packaged E2E 23/30, e2e geometry ✗ (same signature). Round-2 root causes, all fixed (confirmed by 36723879956):**
   - *packaged E2E 23/30.* The patientList fix unblocked queue/referrals/appointments/restore/global-search/destructive steps. Remaining failures root-caused to three REAL defects + one test bug, all fixed:
     1. `toothConditions` leaked snake_case rows (`is_active` etc.) — the chart UI filters on `isActive`, so the condition dropdown showed only "Sound / clear". Mapped to the ToothCondition contract + chart regression test.
     2. **RxForm and InvoiceForm patient pickers rendered NO result list** — the search input existed but results were never rendered, so prescriptions/invoices could not be created from those pages at all. Both now render result buttons (same pattern as the working queue/visits/appointments pickers).
@@ -63,8 +66,8 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Last Verified Commit
 
-- `32a43ca` (pushed): verify ✓, windows-installer ✓, packaged-E2E 23/30, e2e geometry ✗ — round-2 fixes (toothConditions mapping, RxForm/InvoiceForm picker lists, Buffer protocol bodies, geometry diagnostics + flags, visit-step fix) sit locally on top, pending push + CI.
-- Local gate on the round-2 fixes: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ harness `node --check` ✓.
+- `c1c1bf1` (pushed): verify ✓, windows-installer ✓, packaged-E2E 26/30, geometry 10/28 (differential successful). Round-3 fixes (print TTF fonts + fonts-ready wait, protocol ttf mime, three E2E assertion fixes) sit locally on top, pending push + CI.
+- Local gate on the round-3 fixes: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ harness `node --check` ✓ (re-verified after the sandbox re-provisioned mid-session; recovery: git fetch + reset to origin head + npm ci --ignore-scripts).
 - Previous full green: `ff258bd` / run 36696431273 (verify + e2e smoke, before Windows jobs existed).
 
 ## Build Status
@@ -75,7 +78,7 @@ Sandbox-local gate on 236e84c (all green, verified 2026-09-30):
 - `npm test`: **152/152 across 13 files**.
 - `npm run build`: succeeds.
 - `npm run dist`: not runnable in sandbox (no Windows/electron-builder targets here); performed on CI `windows-installer` job.
-- GitHub Actions: run 36719098611 (236e84c) and 36722132504 (32a43ca): verify ✓, windows-installer ✓ both times; e2e geometry ✗, packaged E2E 16/30 → 23/30 (three more real defects fixed locally). Next run must confirm all four green.
+- GitHub Actions: 36719098611 (236e84c), 36722132504 (32a43ca), 36723879956 (c1c1bf1): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30; e2e geometry failing but fully root-caused (WOFF2 print-compositor issue). Next run must confirm all four green.
 
 ## Release Status
 

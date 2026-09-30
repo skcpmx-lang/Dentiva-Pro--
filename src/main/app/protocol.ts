@@ -64,6 +64,7 @@ function mimeFor(p: string): string {
   const ext = p.toLowerCase().split('.').pop()
   switch (ext) {
     case 'woff2': return 'font/woff2'
+    case 'ttf': return 'font/ttf'
     case 'png': return 'image/png'
     case 'jpg': case 'jpeg': return 'image/jpeg'
     case 'webp': return 'image/webp'

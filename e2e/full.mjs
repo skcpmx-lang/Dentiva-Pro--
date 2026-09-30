@@ -218,7 +218,9 @@ async function main() {
     await page.locator('input[title="Unit price in ৳"]').first().fill('1500')
     await page.getByRole('button', { name: /Save visit/ }).click()
     await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })
-    await page.waitForSelector('text=Scaling & polishing', { timeout: 10_000 })
+    // the visit's treatment line shows in the Treatments column of the visits list
+    await page.locator('.nav-item', { hasText: 'Visits' }).click()
+    await page.locator('.tbl tbody tr', { hasText: 'Scaling & polishing' }).first().waitFor({ timeout: 10_000 })
   })
 
   /* ---------------- dental chart ---------------- */
@@ -228,7 +230,7 @@ async function main() {
     await page.locator('button:has(b)', { hasText: PATIENT.name }).first().click()
     await page.locator('.tooth', { hasText: '36' }).click()
     await page.locator('.card-pad', { hasText: 'Condition' }).locator('select.select').first().selectOption({ label: 'Caries' })
-    await page.locator('textarea').first().fill('গহ্বরযুক্ত ক্ষয় — অস্থায়ী ফিলিং করা হয়েছে')
+    await page.locator('input[placeholder="e.g. MO caries, mild"]').fill('গহ্বরযুক্ত ক্ষয় — অস্থায়ী ফিলিং করা হয়েছে')
     await page.getByRole('button', { name: 'Save changes' }).click()
     await page.waitForSelector('text=/saved|updated/i', { timeout: 10_000 })
   })
@@ -245,7 +247,9 @@ async function main() {
     await page.locator('textarea[placeholder="General advice printed on the prescription"]').fill('দিনে দুবার ব্রাশ করুন।')
     await page.getByRole('button', { name: /Save & print/ }).click()
     await page.waitForSelector('.modal-head', { state: 'detached', timeout: 20_000 })
-    await page.waitForSelector('text=Amoxicillin', { timeout: 10_000 })
+    // the list row shows the rx number, patient and medicine count (not medicine names)
+    await page.locator('.tbl tbody tr', { hasText: 'RX-00001' }).first().waitFor({ timeout: 10_000 })
+    await page.locator('.tbl tbody tr', { hasText: '1 item' }).first().waitFor({ timeout: 10_000 })
   })
 
   /* ---------------- invoice + payment ---------------- */
