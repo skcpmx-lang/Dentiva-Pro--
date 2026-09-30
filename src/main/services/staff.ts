@@ -77,7 +77,7 @@ export function staffSave(ctx: AppContext, actor: Actor, input: StaffInput): Sta
   const res = staffSchema.safeParse(input)
   if (!res.success) throw errValidation(Object.values(res.error.flatten().fieldErrors)[0]?.[0] ?? 'Invalid staff information.', res.error.flatten().fieldErrors)
   const d = res.data
-  if (d.bloodGroup && !BLOOD_GROUPS.includes(d.bloodGroup as never)) throw errValidation('Invalid blood group.')
+  if (d.bloodGroup && !BLOOD_GROUPS.includes(d.bloodGroup as (typeof BLOOD_GROUPS)[number])) throw errValidation('Invalid blood group.')
   if (d.dob && !isValidDateStr(d.dob)) throw errValidation('Invalid date of birth.')
   if (d.joiningDate && !isValidDateStr(d.joiningDate)) throw errValidation('Invalid joining date.')
   const ts = new Date(ctx.clock().getTime()).toISOString()
@@ -195,7 +195,7 @@ export function userSave(ctx: AppContext, actor: Actor, sessions: SessionManager
           .run(hashPassword(d.password), ts, userId)
       }
       audit(ctx, actor, { action: 'update', entity: 'user', entityId: userId, newValue: { ...d, password: undefined } })
-      sessions.refreshActor(ctx, { token: '', userId, actor, locked: false, createdAt: ts } as never)
+      sessions.refreshUser(ctx, userId)
     } else {
       if (!d.password) throw errValidation('A password is required for a new user.')
       validatePasswordStrength(d.password)

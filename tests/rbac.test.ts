@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createTestEnv, completeSetupLogin, actorWith, type TestEnv } from './helpers'
-import { patientCreate, patientGet, patientUpdate } from '../src/main/services/patients'
+import { patientCreate, patientGet } from '../src/main/services/patients'
 import { globalSearch } from '../src/main/services/search'
 import { reportList, reportRun } from '../src/main/services/reports'
 import { dashboardGet } from '../src/main/services/dashboard'
 import { notificationList, notificationMarkRead, notify, notificationUnreadCount } from '../src/main/services/notifications'
 import { actorCan } from '../src/main/core/context'
 import { AppError } from '@shared/errors'
-import { todayISO } from '../src/shared/dates'
 
 let env: TestEnv
 

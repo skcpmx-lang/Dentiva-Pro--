@@ -9,6 +9,7 @@ export function openDatabase(dbPath: string): Db {
   db.pragma('foreign_keys = ON')
   db.pragma('synchronous = NORMAL')
   db.pragma('busy_timeout = 5000')
+  db.pragma('trusted_schema = OFF')
   return db
 }
 

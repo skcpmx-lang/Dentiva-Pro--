@@ -107,6 +107,20 @@ export class SessionManager {
     session.actor = actor
   }
 
+  /** Re-load permissions for every live session of a user (drops dead sessions). */
+  refreshUser(ctx: AppContext, userId: number): void {
+    for (const [token, s] of this.sessions) {
+      if (s.userId === userId) {
+        const actor = loadActor(ctx, userId)
+        if (!actor || !actor.permissions.size) {
+          this.sessions.delete(token)
+        } else {
+          s.actor = actor
+        }
+      }
+    }
+  }
+
   drop(token: string): void {
     this.sessions.delete(token)
   }

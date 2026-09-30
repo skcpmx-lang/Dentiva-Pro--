@@ -1,6 +1,6 @@
 # Dentiva Pro — RBAC Matrix
 
-## 1. Permission Catalog (58 permissions)
+## 1. Permission Catalog (69 permissions)
 
 `patient.` view · create · edit · archive · delete · export
 `appointment.` view · create · edit · delete

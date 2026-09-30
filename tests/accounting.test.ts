@@ -81,7 +81,7 @@ describe('accounting transactions', () => {
     const linked = env.db.prepare('SELECT * FROM financial_transactions WHERE payment_id IS NOT NULL').all() as { id: number; payment_id: number }[]
     expect(linked.length).toBe(1)
     paymentVoid(env.ctx, env.owner, linked[0].payment_id, 'Entered on wrong invoice')
-    expect(env.db.prepare('SELECT COUNT(*) AS c FROM financial_transactions WHERE payment_id IS NOT NULL').get().c).toBe(0)
+    expect((env.db.prepare('SELECT COUNT(*) AS c FROM financial_transactions WHERE payment_id IS NOT NULL').get() as { c: number }).c).toBe(0)
   })
 
   it('summarizes income, expenses and net correctly', () => {

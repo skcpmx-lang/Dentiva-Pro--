@@ -93,7 +93,7 @@ export interface VisitInput {
   followUpDate?: string | null
   followUpNote?: string | null
   status?: 'open' | 'completed'
-  treatments: {
+  treatments?: {
     treatmentId?: number | null
     name: string
     toothNumbers?: string | null
@@ -187,7 +187,7 @@ export interface InvoiceInput {
   visitId?: number | null
   dentistId?: number | null
   invoiceDate: string
-  discount: number
+  discount?: number
   notes?: string | null
   lines: { treatmentId?: number | null; description: string; quantity: number; unitPrice: number }[]
 }

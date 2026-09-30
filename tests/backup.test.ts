@@ -2,9 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createTestEnv, completeSetupLogin, type TestEnv } from './helpers'
 import { createBackup, backupList, verifyBackup, backupStatus, backupSchedule, restoreBackup } from '../src/main/services/backup'
 import { patientCreate } from '../src/main/services/patients'
-import { openDatabase, migrate, currentVersion } from '../src/main/core/db'
+import { openDatabase, currentVersion } from '../src/main/core/db'
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
 
 let env: TestEnv
 

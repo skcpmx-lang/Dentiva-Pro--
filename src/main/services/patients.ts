@@ -3,7 +3,7 @@ import type { AppContext, Actor } from '../core/context'
 import { errValidation, errNotFound, errConflict } from '@shared/errors'
 import { actorCan } from '../core/context'
 import type { PatientListQuery, PatientInput } from '@shared/ipc'
-import type { Paginated } from '@shared/types'
+import type { Paginated, AppointmentRow } from '@shared/types'
 import type { Patient, PatientListRow, PatientDetail } from '@shared/types'
 import { resolveRange, todayISO, isValidDateStr } from '@shared/dates'
 import { nextSequence, getSettings } from './settings'
@@ -131,7 +131,7 @@ export function patientGet(ctx: AppContext, actor: Actor, id: number): PatientDe
     FROM appointments a JOIN patients p ON p.id = a.patient_id JOIN dentists d ON d.id = a.dentist_id
     WHERE a.patient_id = ? AND a.appt_date >= ? AND a.status NOT IN ('cancelled','no_show','rescheduled','completed')
     ORDER BY a.appt_date ASC, a.appt_time ASC LIMIT 5
-  `).all(id, todayISO(ctx.clock())) as never[]
+  `).all(id, todayISO(ctx.clock())) as unknown as AppointmentRow[]
   const missed = (ctx.db.prepare(
     "SELECT COUNT(*) AS c FROM appointments WHERE patient_id = ? AND status = 'no_show'"
   ).get(id) as { c: number }).c

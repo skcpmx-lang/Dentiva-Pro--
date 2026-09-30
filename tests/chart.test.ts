@@ -19,8 +19,8 @@ beforeAll(() => {
   const v = visitCreate(env.ctx, env.owner, { patientId, dentistId: dentist.id, visitDate: '2026-03-01', visitTime: '10:00', chiefComplaint: 'Check-up' })
   visitId = v.id
   const conds = toothConditions(env.ctx)
-  cariesId = conds.find((c) => c.key === 'caries')?.id ?? conds[0].id
-  filledId = conds.find((c) => c.key === 'filled')?.id ?? conds[1].id
+  cariesId = conds.find((c) => c.code === 'caries')?.id ?? conds[0].id
+  filledId = conds.find((c) => c.code === 'filled')?.id ?? conds[1].id
 })
 
 afterAll(() => {

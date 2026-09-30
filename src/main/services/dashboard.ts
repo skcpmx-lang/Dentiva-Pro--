@@ -1,5 +1,6 @@
 import type { AppContext, Actor } from '../core/context'
 import type { DashboardData } from '@shared/ipc'
+import type { AppointmentRow, QueueEntry } from '@shared/types'
 import { actorCan } from '../core/context'
 import { todayISO } from '@shared/dates'
 
@@ -81,20 +82,45 @@ export function dashboardGet(ctx: AppContext, actor: Actor): DashboardData {
   }
 }
 
-function mapAppt(r: Record<string, unknown>): never {
+function mapAppt(r: Record<string, unknown>): AppointmentRow {
   return {
-    id: r.id, patientId: r.patient_id, dentistId: r.dentist_id, apptDate: r.appt_date, apptTime: r.appt_time,
-    durationMinutes: r.duration_minutes ?? null, reason: r.reason ?? null, status: r.status, notes: r.notes ?? null,
-    sourceAppointmentId: r.source_appointment_id ?? null, cancelledReason: r.cancelled_reason ?? null,
-    patientName: r.patientName, patientCode: r.patientCode, patientPhone: r.patientPhone ?? null, dentistName: r.dentistName
-  } as never
+    id: r.id as number,
+    patientId: r.patient_id as number,
+    dentistId: r.dentist_id as number,
+    apptDate: r.appt_date as string,
+    apptTime: r.appt_time as string,
+    durationMinutes: (r.duration_minutes as number | null) ?? null,
+    reason: (r.reason as string | null) ?? null,
+    status: r.status as AppointmentRow['status'],
+    notes: (r.notes as string | null) ?? null,
+    sourceAppointmentId: (r.source_appointment_id as number | null) ?? null,
+    cancelledReason: (r.cancelled_reason as string | null) ?? null,
+    patientName: r.patientName as string,
+    patientCode: r.patientCode as string,
+    patientPhone: (r.patientPhone as string | null) ?? null,
+    dentistName: r.dentistName as string
+  }
 }
 
-function mapQueue(r: Record<string, unknown>): never {
+function mapQueue(r: Record<string, unknown>): QueueEntry {
   return {
-    id: r.id, tokenNo: r.token_no, queueDate: r.queue_date, patientId: r.patient_id, appointmentId: r.appointment_id ?? null,
-    dentistId: r.dentist_id, priority: r.priority, status: r.status, arrivedAt: r.arrived_at, calledAt: r.called_at ?? null,
-    startedAt: r.started_at ?? null, completedAt: r.completed_at ?? null, finishedAt: r.finished_at ?? null, notes: r.notes ?? null,
-    patientName: r.patientName, patientCode: r.patientCode, dentistName: r.dentistName, waitingMinutes: 0
-  } as never
+    id: r.id as number,
+    tokenNo: r.token_no as number,
+    queueDate: r.queue_date as string,
+    patientId: r.patient_id as number,
+    appointmentId: (r.appointment_id as number | null) ?? null,
+    dentistId: r.dentist_id as number,
+    priority: r.priority as QueueEntry['priority'],
+    status: r.status as QueueEntry['status'],
+    arrivedAt: r.arrived_at as string,
+    calledAt: (r.called_at as string | null) ?? null,
+    startedAt: (r.started_at as string | null) ?? null,
+    completedAt: (r.completed_at as string | null) ?? null,
+    finishedAt: (r.finished_at as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    patientName: r.patientName as string,
+    patientCode: r.patientCode as string,
+    dentistName: r.dentistName as string,
+    waitingMinutes: 0
+  }
 }
