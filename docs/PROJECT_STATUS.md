@@ -5,7 +5,7 @@
 
 ## Current Phase
 
-Phase 3 — Implementation — **Done** (verified below). Phase 4 testing largely done at service level; E2E on real Electron runs on CI (see Blockers).
+Phase 3 — Implementation — **Done**. Phase 4 testing: service level + CI E2E smoke **green** (PR #1, Actions run 36696431273); print-geometry and Windows-installer validation still pending (see Blockers / Next Tasks).
 
 | Phase | Description | Status |
 |---|---|---|
@@ -13,10 +13,10 @@ Phase 3 — Implementation — **Done** (verified below). Phase 4 testing largel
 | 1 | Planning & engineering documents | Done (kept synchronized) |
 | 2 | Architecture scaffold, toolchain, CI config | Done (CI workflow: typecheck+lint+tests+build, xvfb e2e job) |
 | 3 | Implementation: database, services, renderer, printing | Done — trusted main process (25 RBAC-enforcing services, IPC router, print pipeline, secure protocol) + complete 14-page React renderer |
-| 4 | Testing: unit, integration, workflow, stress | Done at service level (125 tests incl. 41-step workflow + stress suite); Playwright E2E + Windows installer validation run on CI |
+| 4 | Testing: unit, integration, workflow, stress | Service level done (125 tests incl. 41-step workflow + stress suite); **Playwright E2E smoke passed on CI** (real Electron 44 under xvfb: boot → activation step → bad code rejected → zero console errors); print-geometry + Windows installer validation pending |
 | 5 | Audit & fix cycle | In Progress (lint/typecheck/dead-code scans clean; UI visual QA pending on real display) |
 | 6 | Release build (Windows installer via CI) + validation | Not Started (electron-builder 26.15.3 pinned + config ready) |
-| 7 | GitHub delivery (PR + Release) | Not Started |
+| 7 | GitHub delivery (PR + Release) | PR #1 open (not merged — release gate not passed); GitHub Release pending |
 
 ## Completed Work (verified)
 
@@ -30,14 +30,13 @@ Phase 3 — Implementation — **Done** (verified below). Phase 4 testing largel
 
 ## Current Task
 
-- First CI run on GitHub (typecheck/lint/tests/build + xvfb e2e) once the branch PR is opened.
+- Windows NSIS installer job on CI (`npm run dist`, electron-builder) + artifact validation.
 
 ## Next Tasks
 
-1. CI green on GitHub Actions (ubuntu verify job + xvfb e2e job).
-2. Windows NSIS installer built on CI; artifact validation; GitHub Release.
-3. Print geometry tests (PDF MediaBox assertions) once an Electron binary is available (CI).
-4. Final audits (security, dead-code, dependency/license, UI QA on a real display) and traceability update.
+1. Windows NSIS installer built on CI; artifact validation; GitHub Release.
+2. Print geometry tests (PDF MediaBox assertions for A4/A5/thermal-80) — runnable on CI where the Electron binary exists.
+3. Final audits (security, dead-code, dependency/license, UI QA on a real display) and traceability update (REQUIREMENTS_TRACEABILITY.md per-row statuses are still pre-implementation).
 
 ## Failed Tests / Unresolved Issues
 
@@ -47,11 +46,11 @@ Phase 3 — Implementation — **Done** (verified below). Phase 4 testing largel
 
 - None. Known environmental constraints (documented honestly, not blockers to implementation):
   - No physical Windows machine or printer in the build sandbox. Windows-specific validation (installer execution, physical printing, DPI on real monitors, clean-machine install/uninstall) is performed on GitHub Actions `windows-latest` runners where possible and the remainder is listed as externally-required validation in `RELEASE_CHECKLIST.md` / final report. No results are fabricated.
-  - The build sandbox cannot run the Electron app or download its binary (GitHub release-asset hosts and Debian mirrors are network-blocked; no X server). Consequences, all handled: `npm run e2e` is executed on CI under xvfb; local verification in the sandbox covers typecheck, lint, unit/integration/workflow/stress tests, and `electron-vite build`.
+  - The build sandbox cannot run the Electron app or download its binary (GitHub release-asset hosts and Debian mirrors are network-blocked; no X server; Actions log/blob storage also unreachable, so the CI workflow posts e2e failure logs to the PR as comments). Consequences, all handled: `npm run e2e` runs on CI under xvfb — **first real run passed** (run 36696431273, two e2e-script bugs found and fixed on the branch: see commits `67b445f`, `ff258bd`); sandbox-local verification covers typecheck, lint, unit/integration/workflow/stress tests, and `electron-vite build`.
 
 ## Last Verified Commit
 
-- (updated at delivery — see git log; CI runs are the verification evidence)
+- `ff258bd` — PR #1, Actions run [36696431273](https://github.com/skcpmx-lang/Dentiva-Pro--/actions/runs/36696431273): both CI jobs green (verify: typecheck/lint/125 tests/build; e2e: real Electron under xvfb).
 
 ## Build Status
 
@@ -61,7 +60,8 @@ All green in the build sandbox (last verified 2026-09-30, commit in git log):
 - `npm run lint` (ESLint 9 flat config): clean.
 - `npm test` (Vitest): **125/125 passing** across 11 files.
 - `npm run build` (electron-vite production build): succeeds (main 309 kB, renderer 1.1 MB / 1,938 modules).
-- `npm run dist` (electron-builder NSIS x64): configured, not yet executed here (runs on CI/Windows).
+- `npm run dist` (electron-builder NSIS x64): configured, not yet executed (no Windows packaging job yet).
+- GitHub Actions CI (PR #1): both jobs green on `ff258bd` (run 36696431273).
 
 ## Release Status
 
