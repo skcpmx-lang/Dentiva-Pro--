@@ -152,7 +152,7 @@ void app.whenReady().then(() => {
 
   const ctx = { db, paths, clock: () => new Date(), appVersion: APP_VERSION }
   const sessions = new SessionManager()
-  const print = new PrintManager(ctx, 'dentiva-safe://fonts')
+  const print = new PrintManager(ctx)
 
   registerSafeProtocol(ctx, fontsDir())
 

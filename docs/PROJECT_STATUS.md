@@ -31,7 +31,7 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Current Task
 
-1. CI run 36723879956 (c1c1bf1) diagnosed — packaged E2E 26/30, geometry differential delivered the print root cause. Third round of fixes committed (print fonts switch to TTF; three E2E assertion fixes) — push and watch the next run.
+1. CI run 36726128680 (2baf949) diagnosed — packaged E2E **29/30** (only the print step fails), geometry confirmed TTF webfonts fail too. Fourth-round fix committed: print documents switch to SYSTEM fonts (AD-031) — push and watch the next run.
 
 ## Next Tasks
 
@@ -42,7 +42,10 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Failed Tests / Unresolved Issues
 
-- **36723879956 (c1c1bf1): verify ✓, windows-installer ✓, packaged E2E 26/30, e2e geometry 10/28. Round-3 root causes, all fixed locally (not yet CI-verified):**
+- **36726128680 (2baf949): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 10/28 (TTF did not fix webfont printing). Round-4 root cause + fix (not yet CI-verified):**
+  - TTF webfonts fail identically → the failure is webfont-per-se in Electron 44 (Chromium 152), not the format or the custom protocol. The packaged Windows app's invoice print (the only remaining packaged step failure) matches the same root cause cross-platform.
+  - FIX (AD-031): print documents use SYSTEM fonts (Noto Sans Bengali → Windows' Nirmala UI → sans-serif); the UI keeps bundled WOFF2. Geometry driver installs the bundled Noto TTF as a system font on Linux CI; embedded-font assertions accept NotoSansBengali|NirmalaUI. Informational probe added for data-URL webfont printing.
+- **36723879956 (c1c1bf1): verify ✓, windows-installer ✓, packaged E2E 26/30, e2e geometry 10/28. Round-3 root causes, all fixed (confirmed by 36726128680: 29/30):**
   - *Geometry differential diagnostics pinned the print failure:* a page with NO webfonts prints fine (✔ minimal case), the dentiva-safe:// font fetch returns 200 (✔ Buffer protocol fix also eliminated the SIGTRAP/ERR_FAILED crash — all 28 cases now run), but **any page that uses a WOFF2-sourced webfont fails in the print compositor** ("Page reading failed" → printToPDF rejects). The packaged Windows app's invoice-print step (no PDF in temp dir after clicking Print) is consistent with the same root cause cross-platform. FIX: print documents now reference losslessly-converted TTF builds of the same bundled Noto Sans Bengali subsets (`format('truetype')`); UI keeps WOFF2. Provenance + rationale recorded in PRINT_SPECIFICATION.md.
   - *Packaged E2E 26/30 — remaining 4 were one real print defect + three assertion mismatches (fixed):* visit treatment line is asserted on the Visits list (Treatments column); chart note field is an input with a placeholder (not a textarea); prescriptions list shows "1 item" not medicine names (assert the RX row instead). invoices ✓ payments ✓ invoice-void ✓ queue ✓ referrals ✓ appointments ✓ restore ✓ destructive ✓ all pass.
 - **36722132504 (32a43ca): verify ✓, windows-installer ✓, packaged E2E 23/30, e2e geometry ✗ (same signature). Round-2 root causes, all fixed (confirmed by 36723879956):**
@@ -66,8 +69,8 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Last Verified Commit
 
-- `c1c1bf1` (pushed): verify ✓, windows-installer ✓, packaged-E2E 26/30, geometry 10/28 (differential successful). Round-3 fixes (print TTF fonts + fonts-ready wait, protocol ttf mime, three E2E assertion fixes) sit locally on top, pending push + CI.
-- Local gate on the round-3 fixes: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ harness `node --check` ✓ (re-verified after the sandbox re-provisioned mid-session; recovery: git fetch + reset to origin head + npm ci --ignore-scripts).
+- `2baf949` (pushed): verify ✓, windows-installer ✓, packaged-E2E 29/30, geometry 10/28 (TTF experiment negative). Round-4 fix (system-font print strategy, AD-031) sits locally on top, pending push + CI.
+- Local gate on the round-4 fix: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ geometry bundle esbuild ✓.
 - Previous full green: `ff258bd` / run 36696431273 (verify + e2e smoke, before Windows jobs existed).
 
 ## Build Status
@@ -78,7 +81,7 @@ Sandbox-local gate on 236e84c (all green, verified 2026-09-30):
 - `npm test`: **152/152 across 13 files**.
 - `npm run build`: succeeds.
 - `npm run dist`: not runnable in sandbox (no Windows/electron-builder targets here); performed on CI `windows-installer` job.
-- GitHub Actions: 36719098611 (236e84c), 36722132504 (32a43ca), 36723879956 (c1c1bf1): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30; e2e geometry failing but fully root-caused (WOFF2 print-compositor issue). Next run must confirm all four green.
+- GitHub Actions: 36719098611 → 36726128680 (four runs): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30 → **29/30**; e2e geometry failing but fully root-caused (webfont print compositor defect, AD-031 fix pending). Next run must confirm all four green.
 
 ## Release Status
 

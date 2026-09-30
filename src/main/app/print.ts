@@ -20,10 +20,22 @@ interface PrintJob {
 }
 
 /**
- * Injects the bundled-font CSS into a print document. The renderer templates
- * are complete HTML documents — injecting into their <head> keeps a single
- * valid document instead of nesting a full document inside <body>. Bare HTML
- * fragments are wrapped in a minimal document.
+ * Injects the print-font strategy into a print document. The renderer
+ * templates are complete HTML documents — injecting into their <head> keeps a
+ * single valid document instead of nesting a full document inside <body>.
+ * Bare HTML fragments are wrapped in a minimal document.
+ *
+ * IMPORTANT — print documents deliberately use SYSTEM fonts, not @font-face
+ * webfonts: Electron 44 (Chromium 152) fails to print any page whose glyphs
+ * come from a webfont — the print compositor rejects the serialized page
+ * ("print_compositor_impl.cc: CompositePages: Page reading failed",
+ * printToPDF rejects with "Printing failed"). Reproduced on the packaged
+ * Windows app (invoice print produced no PDF) and on Linux CI, with both
+ * WOFF2 and TTF sources; pages using system fonts print fine (differential
+ * cases in e2e/print-geometry-entry.ts). Windows ships Nirmala UI (full
+ * Bengali support, Win 8.1+); the CI geometry runner installs the bundled
+ * Noto Sans Bengali TTF. The app UI keeps the bundled WOFF2 webfonts — the
+ * defect is specific to the print pipeline.
  */
 function injectPrintFonts(html: string, fontCss: string): string {
   const inject = `<meta charset="utf-8"><style>${fontCss}</style>`
@@ -41,10 +53,7 @@ function injectPrintFonts(html: string, fontCss: string): string {
 export class PrintManager {
   private jobs = new Map<string, PrintJob>()
 
-  constructor(
-    private ctx: AppContext,
-    private fontsUrl: string
-  ) {}
+  constructor(private ctx: AppContext) {}
 
   async renderPdf(html: string, opts: PrintPdfPayload): Promise<PrintPdfResult> {
     if (typeof html !== 'string' || html.length === 0) throw errValidation('Empty print document.')
@@ -59,23 +68,12 @@ export class PrintManager {
     const htmlPath = join(this.ctx.paths.tempDir, `${id}.html`)
     const pdfPath = join(this.ctx.paths.tempDir, `${id}.pdf`)
 
-    // Inject the bundled font + reset CSS before the document's own styles.
-    // Print documents reference the TTF builds: differential CI diagnostics
-    // (print-geometry suite) showed that pages whose only webfonts are
-    // WOFF2-sourced fail inside Chromium's print compositor
-    // ("CompositePages: Page reading failed" → printToPDF rejects with
-    // "Printing failed") on Linux CI — and the packaged Windows app's invoice
-    // print produced no PDF the same way. TTF is the battle-tested format for
-    // print embedding. The app UI keeps the smaller WOFF2 files for display.
+    // System-font strategy for print (see injectPrintFonts docblock): no
+    // @font-face webfonts — Chromium 152's print compositor cannot print
+    // webfont-sourced pages. Explicit stack with Windows' bundled Bengali
+    // font; the templates' own stacks are extended with Nirmala UI as well.
     const fontCss = `
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-400-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 400; src: url('${this.fontsUrl}/noto-sans-bengali-latin-400-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-500-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 500; src: url('${this.fontsUrl}/noto-sans-bengali-latin-500-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-600-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 600; src: url('${this.fontsUrl}/noto-sans-bengali-latin-600-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-bengali-700-normal.ttf') format('truetype'); }
-      @font-face { font-family: 'Noto Sans Bengali'; font-style: normal; font-weight: 700; src: url('${this.fontsUrl}/noto-sans-bengali-latin-700-normal.ttf') format('truetype'); }
+      html, body { font-family: 'Noto Sans Bengali', 'Nirmala UI', 'Inter', system-ui, sans-serif; }
     `
     const fullHtml = injectPrintFonts(html, fontCss)
     writeFileSync(htmlPath, fullHtml, 'utf8')

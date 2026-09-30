@@ -363,7 +363,7 @@ async function main() {
     const expectW = (210 * 72) / 25.4
     const expectH = (297 * 72) / 25.4
     if (Math.abs(w - expectW) > 1 || Math.abs(h - expectH) > 1) throw new Error(`A4 geometry wrong: ${w.toFixed(1)}×${h.toFixed(1)}pt`)
-    if (!latin.includes('NotoSansBengali')) throw new Error('Bengali font not embedded in the packaged-app PDF')
+    if (!/NotoSansBengali|NirmalaUI/i.test(latin)) throw new Error('Bengali font not embedded in the packaged-app PDF')
   })
 
   /* ---------------- backup + restore ---------------- */

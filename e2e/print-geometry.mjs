@@ -14,7 +14,7 @@
  * and the installed electron binary (present after npm ci).
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -55,6 +55,27 @@ async function main() {
     die('the electron package did not export a binary path — run npm ci first')
   }
   if (!existsSync(String(electronBin))) die(`electron binary not found at ${electronBin}`)
+
+  // 2a. Print documents use SYSTEM fonts (Chromium 152's print compositor
+  //     cannot print webfont-sourced pages — see print.ts). Install the
+  //     bundled Noto Sans Bengali TTFs as system fonts on Linux so the
+  //     geometry suite exercises the same strategy a Windows machine gets
+  //     via its bundled Nirmala UI.
+  if (process.platform === 'linux') {
+    const home = process.env.HOME ?? ''
+    if (home) {
+      try {
+        mkdirSync(join(home, '.fonts'), { recursive: true })
+        for (const f of readdirSync(fontsDir)) {
+          if (f.endsWith('.ttf')) copyFileSync(join(fontsDir, f), join(home, '.fonts', f))
+        }
+        spawnSync('fc-cache', ['-f'], { stdio: 'ignore' })
+        console.log('→ installed bundled Noto Sans Bengali TTFs as system fonts (fc-cache)')
+      } catch (e) {
+        console.error(`  ⚠ font install for system-font print strategy failed: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+  }
 
   // 3. Run inside Electron. --no-sandbox: CI containers cannot use the SUID
   //    chrome-sandbox helper. --disable-dev-shm-usage: Chromium's print

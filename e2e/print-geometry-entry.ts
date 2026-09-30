@@ -7,7 +7,7 @@
  * dentiva-safe:// protocol and asserts the geometry and robustness of the
  * PDFs Chromium actually produces.
  */
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { BrowserWindow } from 'electron'
@@ -120,6 +120,13 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
       record(name, match ? match.test(msg) : true, match && !match.test(msg) ? `error message did not match: ${msg}` : undefined)
     }
   }
+  /** Informational probe: records the real outcome in the detail without gating the suite. */
+  const recordInfo = (name: string, ok: boolean, detail?: string): void => {
+    const c: CaseResult = { name: `${name} (informational)`, ok: true, detail: `${ok ? 'printed' : 'FAILED'}${detail ? ` — ${detail}` : ''}` }
+    cases.push(c)
+    logCase(c)
+    console.log(`  ℹ ${c.name}: ${c.detail}`)
+  }
 
   const paths = buildPaths(opts.dataDir)
   mkdirSync(paths.tempDir, { recursive: true })
@@ -130,7 +137,7 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
   // harness independent of a database while using the real print pipeline.
   const ctx = { paths } as unknown as AppContext
   registerSafeProtocol(ctx, opts.fontsDir)
-  const pm = new PrintManager(ctx, 'dentiva-safe://fonts')
+  const pm = new PrintManager(ctx)
 
   const render = async (doc: PrintDoc): Promise<{ pdfUrl: string; pages: number; bytes: Buffer }> => {
     const r = await pm.renderPdf(doc.html, { html: doc.html, paper: doc.paper, widthMm: doc.widthMm ?? null, heightMm: doc.heightMm ?? null, marginMm: doc.marginMm, scale: doc.scale })
@@ -168,26 +175,51 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
     try {
       const id = randomUUID()
       const htmlPath = join(paths.tempDir, `${id}-fontdiag.html`)
+      // System-font print check (the pipeline's strategy): no @font-face — the
+      // runner installs the bundled Noto Sans Bengali TTF as a system font
+      // (see print-geometry.mjs); on Windows the app relies on Nirmala UI.
+      // Informational experiment: also print a page using an inline data-URL
+      // webfont, to record whether webfont printing breaks regardless of how
+      // the font bytes are delivered.
+      const ttf = readFileSync(join(opts.fontsDir, 'noto-sans-bengali-bengali-400-normal.ttf')).toString('base64')
       writeFileSync(htmlPath, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        @font-face { font-family: 'Noto Sans Bengali'; src: url('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.ttf') format('truetype'); }
-        body { font-family: 'Noto Sans Bengali'; }
-      </style></head><body><p id="t">বাংলা পরীক্ষা</p><script>
+        @font-face { font-family: 'DiagWebFont'; src: url(data:font/ttf;base64,${ttf}) format('truetype'); }
+        .webfont { font-family: 'DiagWebFont'; }
+        .sysfont { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }
+      </style></head><body><p class="webfont" id="w">বাংলা পরীক্ষা webfont</p><p class="sysfont" id="s">বাংলা পরীক্ষা system</p><script>
         window.__diag = { status: document.fonts.status }
         document.fonts.ready.then(() => { window.__diag.ready = true; window.__diag.statusAfter = document.fonts.status })
-        Promise.all(Array.from(document.fonts).map((f) => f.load().then(() => 'ok', (e) => 'fail:' + (e && e.message ? e.message : e)))).then((r) => { window.__diag.loads = r })
         fetch('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.ttf').then((r) => { window.__diag.fetchStatus = r.status }, (e) => { window.__diag.fetchStatus = 'err:' + (e && e.message ? e.message : e) })
       <\/script></body></html>`, 'utf8')
       await win.loadURL(`dentiva-safe://temp/${id}-fontdiag.html`)
-      await new Promise((r) => setTimeout(r, 1500))
+      await new Promise((r) => setTimeout(r, 800))
       const diag = (await win.webContents.executeJavaScript('window.__diag')) as Record<string, unknown>
       const fetchOk = diag.fetchStatus === 200
       record('font diagnostics: dentiva-safe:// font fetch', fetchOk, JSON.stringify(diag))
       try {
-        const pdf = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
-        const embedded = pdf.toString('latin1').includes('NotoSansBengali')
-        record('font diagnostics: printToPDF with webfont', pdf.length > 1000, `pdf=${pdf.length} bytes, fontEmbedded=${embedded}`)
+        const pdfAll = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
+        recordInfo('webfont + system-font mixed page prints (data-URL webfont)', true, `pdf=${pdfAll.length} bytes`)
       } catch (e) {
-        record('font diagnostics: printToPDF with webfont', false, e instanceof Error ? e.message : String(e))
+        recordInfo('webfont + system-font mixed page prints (data-URL webfont)', false, e instanceof Error ? e.message : String(e))
+      }
+      // Informational (does not gate): does printing still fail when the page
+      // uses ONLY system fonts? This mirrors the production print strategy.
+      try {
+        const win2 = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+        try {
+          const id2 = randomUUID()
+          const p2 = join(paths.tempDir, `${id2}-sysfont.html`)
+          writeFileSync(p2, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, 'utf8')
+          await win2.loadURL(`dentiva-safe://temp/${id2}-sysfont.html`)
+          await win2.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true)
+          const pdf = await win2.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
+          const embedded = /NotoSansBengali|NirmalaUI/i.test(pdf.toString('latin1'))
+          record('font diagnostics: system-font-only page prints (production strategy)', pdf.length > 1000 && embedded, `pdf=${pdf.length} bytes, bengaliFontEmbedded=${embedded}`)
+        } finally {
+          win2.destroy()
+        }
+      } catch (e) {
+        record('font diagnostics: system-font-only page prints (production strategy)', false, e instanceof Error ? e.message : String(e))
       }
     } finally {
       win.destroy()
@@ -219,8 +251,8 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
   try {
     const { bytes, pages } = await render(renderPrescription(rxData()))
     const latin = bytes.toString('latin1')
-    const hasBengaliFont = latin.includes('NotoSansBengali')
-    record('Bengali prescription embeds the bundled Noto Sans Bengali font', hasBengaliFont, hasBengaliFont ? undefined : 'font name not found in PDF — font may not have loaded over dentiva-safe://fonts')
+    const hasBengaliFont = /NotoSansBengali|NirmalaUI/i.test(latin)
+    record('Bengali prescription embeds a Bengali-capable font (system-font strategy)', hasBengaliFont, hasBengaliFont ? undefined : 'no Bengali-capable font name (NotoSansBengali/NirmalaUI) found in the PDF')
     record('Bengali prescription renders as a single A5 page', pages === 1 && countPdfPages(bytes) === 1, `pages=${pages}`)
   } catch (e) {
     record('Bengali prescription renders', false, e instanceof Error ? e.message : String(e))

@@ -21,7 +21,7 @@ function baseCss(marginMm: number): string {
     @page { margin: 0 }
     * { box-sizing: border-box; margin: 0; padding: 0 }
     body {
-      font-family: 'Noto Sans Bengali', 'Inter', system-ui, sans-serif;
+      font-family: 'Noto Sans Bengali', 'Nirmala UI', 'Inter', system-ui, sans-serif;
       color: #14282a; padding: ${marginMm}mm; background: #fff;
       -webkit-print-color-adjust: exact;
       word-break: break-word; overflow-wrap: anywhere;
