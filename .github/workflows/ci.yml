@@ -1,0 +1,259 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, lint, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (main + renderer)
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+  e2e:
+    name: E2E smoke (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # better-sqlite3 v13 is NAPI (ABI-stable across Node and Electron), so this
+      # is normally a fast no-op — it stays as a guard for any future non-NAPI
+      # native dependency and validates native deps resolve under Electron.
+      - name: Verify/rebuild native modules for Electron
+        run: npx electron-builder install-app-deps
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Run E2E smoke test
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a --server-args="-screen 0 1280x800x24" npm run e2e 2>&1 | tee e2e-output.log
+
+      # Real Chromium printToPDF output: MediaBox geometry for every paper
+      # size, Bengali font embedding, logo embedding, pagination, anti-abuse
+      # guards. Drives the real PrintManager + dentiva-safe:// protocol.
+      # 24-bit xvfb is REQUIRED — the print compositor's bitmap readback fails
+      # at the default xvfb depth ("CompositePages: Page reading failed").
+      - name: Run print/PDF geometry tests
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a --server-args="-screen 0 1280x800x24" node e2e/print-geometry.mjs 2>&1 | tee print-geometry.log
+
+      # The build sandbox that drives this PR cannot reach Actions log/blob
+      # storage, so on failure the tail of the log is posted here as a comment.
+      - name: Report e2e failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          {
+            echo "### 🤖 Automated E2E failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '**e2e-output.log (tail)**'
+            echo '```'
+            tail -n 100 e2e-output.log 2>/dev/null || true
+            echo '```'
+            echo '**print-geometry.log (tail)**'
+            echo '```'
+            tail -n 80 print-geometry.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/e2e-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/e2e-failure.md
+
+      - name: Upload screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: e2e/artifacts/
+          if-no-files-found: ignore
+
+  windows-installer:
+    name: Windows installer (NSIS x64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Build NSIS installer (electron-builder)
+        shell: pwsh
+        run: |
+          npm run dist 2>&1 | Tee-Object -FilePath dist.log
+          exit $LASTEXITCODE
+
+      # Audits app.asar: no dev/test/docs/source files, no sourcemaps,
+      # no secret-shaped strings, native prebuild unpacked, Bengali fonts present.
+      - name: Audit packaged contents (asar)
+        shell: pwsh
+        run: |
+          node e2e/asar-audit.mjs release/win-unpacked 2>&1 | Tee-Object -FilePath asar-audit.log
+          exit $LASTEXITCODE
+
+      # Metadata, SHA-256, silent install, shortcuts, registry, packaged-app
+      # launch, silent uninstall.
+      - name: Validate installer end to end
+        shell: pwsh
+        run: |
+          & ./.github/scripts/validate-installer.ps1 2>&1 | Tee-Object -FilePath installer-validation.log
+          if (Test-Path validation.failed) { exit 1 }
+
+      - name: Preserve installer artifact + SHA-256 checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            release/*.exe
+            release/*.sha256
+          if-no-files-found: error
+
+      # The build sandbox that drives this PR cannot reach Actions log/blob
+      # storage, so on failure the captured logs are posted here as a comment.
+      - name: Report installer job failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          {
+            echo "### 🤖 Automated Windows installer job failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '**dist.log (tail)**'
+            echo '```'
+            tail -n 40 dist.log 2>/dev/null || true
+            echo '```'
+            echo '**asar-audit.log (tail)**'
+            echo '```'
+            tail -n 30 asar-audit.log 2>/dev/null || true
+            echo '```'
+            echo '**installer-validation.log (tail)**'
+            echo '```'
+            tail -n 80 installer-validation.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/inst-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/inst-failure.md
+
+  windows-packaged-e2e:
+    name: Packaged full-flow E2E (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The real activation code never enters this repo. For the packaged E2E
+      # build a THROWAWAY verifier is compiled in (random salt, throwaway code).
+      # The code below is not a secret: it only activates this CI-only build.
+      - name: Compile throwaway activation verifier (e2e-only build)
+        run: node scripts/gen-activation-verifier.mjs 5108239461370256
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Package app (unpacked, no installer)
+        shell: pwsh
+        run: |
+          npx electron-builder --win --x64 --dir 2>&1 | Tee-Object -FilePath dist-unpacked.log
+          exit $LASTEXITCODE
+
+      # Full clinical + billing + print + backup flow against the PACKAGED app,
+      # real default user-data paths, real printToPDF output on disk.
+      - name: Run full-flow E2E against the packaged app
+        env:
+          DENTIVA_E2E_CODE: '5108239461370256'
+        shell: pwsh
+        run: |
+          node e2e/full.mjs 2>&1 | Tee-Object -FilePath full-e2e.log
+          exit $LASTEXITCODE
+
+      - name: Report packaged E2E failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          {
+            echo "### 🤖 Automated packaged E2E failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '**full-e2e.log (last 400 lines)**'
+            echo '```'
+            tail -n 400 full-e2e.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/fulle2e-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/fulle2e-failure.md
+
+      - name: Upload E2E screenshots (evidence of each stage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-screenshots
+          path: e2e/artifacts/
+          if-no-files-found: ignore

@@ -1,0 +1,56 @@
+# electron-builder configuration — `npm run dist` (Windows NSIS) / `npm run dist:linux`
+appId: com.dentivapro.dentiva
+productName: Dentiva Pro
+copyright: Copyright © 2026 Shohan Khan
+
+directories:
+  buildResources: build
+  output: release
+
+# Only the compiled bundles ship; runtime node_modules are auto-included from
+# "dependencies" (better-sqlite3, archiver, extract-zip, zod). Sources, type
+# declarations, tests, docs and maps are pruned — the asar audit
+# (e2e/asar-audit.mjs) enforces this.
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+  - "!node_modules/**/{test,tests,__tests__}/**"
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/*.d.ts"
+  - "!node_modules/**/*.d.cts"
+  - "!node_modules/**/*.d.mts"
+  - "!node_modules/@types/**"
+  - "!node_modules/zod/src/**"
+  - "!node_modules/**/bower.json"
+
+# Native module must live outside the asar archive.
+asarUnpack:
+  - node_modules/better-sqlite3/**
+
+# resources/fonts → <install>/resources/fonts (fontsDir() reads this when packaged)
+extraResources:
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - "**/*.woff2"
+      - "*.txt"
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Dentiva Pro
+  deleteAppDataOnUninstall: false
+
+linux:
+  target: [dir]
+  category: Office
