@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Plus, Archive, ArchiveRestore, Trash2, Download, Pencil, Stethoscope, FileText, Receipt, Wallet } from 'lucide-react'
+import { Plus, Archive, ArchiveRestore, Trash2, Download, Pencil, Stethoscope, FileText, Receipt, Wallet, Share2 } from 'lucide-react'
 import { call } from '../ipc'
 import { can } from '../store'
 import { Button, ConfirmDialog, EmptyState, Field, Loading, Modal, Pagination, SearchBar, StatusBadge, money, toast, useDebounced } from '../ui'
-import type { Patient, PatientListRow, Invoice } from '@shared/types'
+import type { Patient, PatientListRow, Invoice, Referral } from '@shared/types'
 import type { PatientInput } from '@shared/ipc'
+import { formatDateHuman } from '@shared/dates'
 import { VisitForm } from './visits'
 import { RxForm } from './prescriptions'
 import { InvoiceForm, PaymentForm } from './billing'
@@ -36,6 +37,13 @@ export function PatientsPage(): React.ReactNode {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Global Ctrl+N shortcut (App.tsx navigates here, then fires this event).
+  useEffect(() => {
+    const openForm = (): void => setShowForm(true)
+    window.addEventListener('dentiva:new-patient', openForm)
+    return () => window.removeEventListener('dentiva:new-patient', openForm)
+  }, [])
 
   return (
     <div className="col" style={{ gap: 14 }}>
@@ -317,6 +325,7 @@ export function PatientDetailPage(): React.ReactNode {
               ))}
             </div>
           ) : null}
+          {can('referral.view') ? <ReferralCard patientId={patientId} /> : null}
         </div>
       </div>
 
@@ -395,5 +404,168 @@ function PatientTimelineCard({ patientId }: { patientId: number }): React.ReactN
         </table>
       </div>
     </div>
+  )
+}
+
+/* ================= Referrals ================= */
+function ReferralCard({ patientId }: { patientId: number }): React.ReactNode {
+  const [rows, setRows] = useState<Referral[] | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<Referral | null>(null)
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      setRows((await call('referral.list', { patientId, preset: 'all', page: 1, pageSize: 50 })).rows)
+    } catch {
+      setRows([])
+    }
+  }, [patientId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const setStatus = async (r: Referral, status: Referral['status']): Promise<void> => {
+    try {
+      await call('referral.save', {
+        id: r.id, patientId: r.patientId, visitId: r.visitId, fromDentistId: r.fromDentistId,
+        toDoctorName: r.toDoctorName, toClinic: r.toClinic, reason: r.reason, notes: r.notes,
+        status, followUpDate: r.followUpDate
+      })
+      await load()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Failed.', 'error')
+    }
+  }
+
+  return (
+    <div className="card card-pad">
+      <div className="row">
+        <div className="section-title" style={{ margin: 0 }}>Referrals</div>
+        <div className="spacer" />
+        {can('referral.create') ? <Button size="sm" variant="primary" onClick={() => setShowForm(true)}><Share2 size={13} /> New referral</Button> : null}
+      </div>
+      {rows === null ? (
+        <Loading />
+      ) : rows.length === 0 ? (
+        <div className="text-soft text-small" style={{ marginTop: 8 }}>No referrals recorded for this patient.</div>
+      ) : (
+        <div className="col" style={{ gap: 10, marginTop: 10 }}>
+          {rows.map((r) => (
+            <div key={r.id} className="row row-wrap" style={{ alignItems: 'flex-start', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div><b>→ {r.toDoctorName}</b>{r.toClinic ? <span className="text-soft"> · {r.toClinic}</span> : null}</div>
+                <div className="text-small" style={{ marginTop: 2 }}>{r.reason}</div>
+                <div className="text-faint text-small" style={{ marginTop: 2 }}>
+                  by {r.fromDentistName} · {formatDateHuman(r.createdAt)}{r.followUpDate ? ` · follow-up ${formatDateHuman(r.followUpDate)}` : ''}
+                </div>
+              </div>
+              <StatusBadge status={r.status} />
+              {can('referral.create') && r.status === 'pending' ? (
+                <>
+                  <Button size="sm" onClick={() => void setStatus(r, 'completed')}>Complete</Button>
+                  <Button size="sm" variant="ghost-danger" onClick={() => void setStatus(r, 'cancelled')}>Cancel</Button>
+                </>
+              ) : null}
+              {can('referral.delete') ? <Button size="sm" variant="ghost-danger" onClick={() => setConfirmDelete(r)}><Trash2 size={13} /></Button> : null}
+            </div>
+          ))}
+        </div>
+      )}
+      {showForm ? <ReferralForm patientId={patientId} onClose={() => setShowForm(false)} onSaved={load} /> : null}
+      {confirmDelete ? (
+        <ConfirmDialog
+          title="Delete referral"
+          danger
+          message={<>Delete the referral to <b>{confirmDelete.toDoctorName}</b>? The patient record itself is untouched.</>}
+          confirmLabel="Delete referral"
+          onConfirm={async () => {
+            await call('referral.delete', { id: confirmDelete.id })
+            toast('Referral deleted.')
+            await load()
+          }}
+          onClose={() => setConfirmDelete(null)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ReferralForm({ patientId, onClose, onSaved }: { patientId: number; onClose: () => void; onSaved: () => Promise<void> }): React.ReactNode {
+  const [dentists, setDentists] = useState<Awaited<ReturnType<typeof call<'dentist.list'>>>>([])
+  const [form, setForm] = useState({ fromDentistId: 0, toDoctorName: '', toClinic: '', reason: '', notes: '', followUpDate: '' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    void call('dentist.list', { activeOnly: true })
+      .then((rows) => {
+        setDentists(rows)
+        if (rows.length > 0) setForm((f) => ({ ...f, fromDentistId: f.fromDentistId || rows[0].id }))
+      })
+      .catch(() => setDentists([]))
+  }, [])
+
+  const set = (k: keyof typeof form, v: string | number): void => setForm((f) => ({ ...f, [k]: v }))
+
+  return (
+    <Modal
+      title="New referral" onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary" loading={busy}
+            disabled={form.toDoctorName.trim().length < 2 || form.reason.trim().length < 3 || form.fromDentistId === 0}
+            onClick={async () => {
+              setBusy(true); setError('')
+              try {
+                const r = await call('referral.save', {
+                  patientId,
+                  fromDentistId: form.fromDentistId,
+                  toDoctorName: form.toDoctorName.trim(),
+                  toClinic: form.toClinic.trim() || null,
+                  reason: form.reason.trim(),
+                  notes: form.notes.trim() || null,
+                  followUpDate: form.followUpDate || null
+                })
+                toast(`Referral to ${r.toDoctorName} recorded.`)
+                await onSaved()
+                onClose()
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed.')
+              } finally { setBusy(false) }
+            }}
+          >
+            <Share2 size={14} /> Save referral
+          </Button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <Field label="Referred-to doctor" required span>
+          <input className="input" value={form.toDoctorName} onChange={(e) => set('toDoctorName', e.target.value)} placeholder="e.g. Dr. সালাহউদ্দিন আহমেদ" autoFocus />
+        </Field>
+        <Field label="Referred-to clinic / hospital" span>
+          <input className="input" value={form.toClinic} onChange={(e) => set('toClinic', e.target.value)} placeholder="e.g. ঢাকা মেডিকেল কলেজ হাসপাতাল" />
+        </Field>
+        <Field label="Referring dentist" required>
+          <select className="select" value={form.fromDentistId} onChange={(e) => set('fromDentistId', Number(e.target.value))}>
+            {dentists.length === 0 ? <option value={0}>No active dentists</option> : null}
+            {dentists.map((d) => <option key={d.id} value={d.id}>{d.fullName}</option>)}
+          </select>
+        </Field>
+        <Field label="Follow-up date">
+          <input className="input" type="date" value={form.followUpDate} onChange={(e) => set('followUpDate', e.target.value)} />
+        </Field>
+        <Field label="Reason" required span>
+          <textarea className="textarea" value={form.reason} onChange={(e) => set('reason', e.target.value)} placeholder="e.g. জটিল শিকড় বাঁকানো — RCT এর জন্য এন্ডোডন্টিস্টের কাছে পাঠানো হলো" />
+        </Field>
+        <Field label="Notes" span>
+          <textarea className="textarea" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Optional — documents sent, findings, contact made…" />
+        </Field>
+        {error ? <div className="field-error span-2">{error}</div> : null}
+      </div>
+    </Modal>
   )
 }

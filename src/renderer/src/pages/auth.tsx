@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { Stethoscope, ShieldCheck, Building2, UserRound, KeyRound, CheckCircle2 } from 'lucide-react'
-import { call, setToken } from '../ipc'
+import { call } from '../ipc'
 import { useApp } from '../store'
 import { Button, Field, toast } from '../ui'
 import type { SetupState } from '@shared/ipc'
 
 /* ================= First-run setup wizard ================= */
 export function SetupPage(): React.ReactNode {
-  const { boot } = useApp()
+  const { enterSession } = useApp()
   const [state, setState] = useState<SetupState | null>(null)
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -57,9 +57,9 @@ export function SetupPage(): React.ReactNode {
         admin: { username: admin.username.trim(), password: admin.password, displayName: admin.displayName.trim() || admin.username.trim() },
         settings: { autoLockMinutes: 10, backupFolder: null, theme: 'light', density: 'comfortable' }
       })
-      setToken(result.token)
-      await boot()
-      window.location.reload()
+      // Land directly in the app — reloading would clear the in-memory session
+      // token and force a fresh login right after setup.
+      await enterSession(result.token)
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Setup failed.', 'error')
     } finally {

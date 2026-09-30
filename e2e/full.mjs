@@ -69,11 +69,30 @@ const consoleErrors = []
 
 const pass = (name) => { results.push({ name, ok: true }); console.log(`  ✔ ${name}`) }
 const fail = (name, detail) => { results.push({ name, ok: false, detail }); console.error(`  ✘ ${name}\n    ${detail}`) }
+
+/** Page-state text dump for the CI log (screenshots cannot be fetched from the build sandbox). */
+async function pageDiagnostics() {
+  try {
+    return await page.evaluate(() => {
+      const toasts = Array.from(document.querySelectorAll('.toast, [class*="toast"]')).map((t) => t.textContent?.trim()).filter(Boolean).join(' | ')
+      const phaseHint = document.querySelector('.sidebar') ? 'app'
+        : document.querySelector('.auth-card') ? 'login/lock'
+          : document.querySelector('.setup-card') ? 'setup-wizard'
+            : document.querySelector('.spinner') ? 'loading-spinner' : 'unknown'
+      const text = (document.body?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300)
+      return `[page: ${phaseHint}${toasts ? `; toasts: ${toasts}` : ''}; text: ${text}]`
+    })
+  } catch (e) {
+    return `[page state unavailable: ${e instanceof Error ? e.message : String(e)} — renderer may have crashed]`
+  }
+}
+
 const step = (name, fn) =>
   fn()
     .then(() => pass(name))
     .catch(async (err) => {
-      fail(name, err instanceof Error ? err.message : String(err))
+      const diag = await pageDiagnostics()
+      fail(name, `${err instanceof Error ? err.message : String(err)} ${diag}`)
       try { await page?.screenshot({ path: join(artifactsDir, `full-fail-${results.length}.png`) }) } catch {}
     })
 
@@ -85,6 +104,13 @@ async function main() {
   app = await electron.launch({ executablePath: exe, env: { ...process.env } })
   page = await app.firstWindow()
   page.setDefaultTimeout(20_000)
+
+  // Surface the packaged app's own stdout/stderr in the CI log.
+  const proc = app.process()
+  if (proc) {
+    proc.stdout?.on('data', (d) => console.log(`[electron] ${String(d).trimEnd()}`))
+    proc.stderr?.on('data', (d) => console.error(`[electron-err] ${String(d).trimEnd()}`))
+  }
 
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()) })
   page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`))
@@ -111,6 +137,8 @@ async function main() {
     await page.locator('input[placeholder="House, Road, Area, City"]').fill('১২ গ্রিন রোড, ঢাকা')
     await page.locator('input[placeholder="01XXXXXXXXX"]').first().fill('01712345678')
     await page.locator('input[placeholder="e.g. Dr. Rahim Khan"]').fill('ডা. রহিম খান')
+    await page.locator('input[placeholder="Consultant, Oral & Maxillofacial Surgeon"]').fill('কনসালট্যান্ট')
+    await page.locator('input[placeholder="BDS, FCPS"]').fill('BDS, FCPS')
     await page.getByRole('button', { name: /Continue/ }).click()
     await page.locator('input[placeholder="Your name"]').waitFor()
   })
@@ -225,8 +253,29 @@ async function main() {
     await page.waitForSelector('text=Completed today', { timeout: 10_000 })
   })
 
-  /* ---------------- appointments ---------------- */
-  await step('appointments: book a follow-up appointment', async () => {
+  /* ---------------- referrals + about ---------------- */
+  await step('referrals: record a referral from the patient profile and manage its status', async () => {
+    await page.locator('.tbl tbody tr', { hasText: PATIENT.name }).first().click()
+    await page.waitForSelector('text=Referrals')
+    await page.getByRole('button', { name: 'New referral' }).click()
+    await page.locator('input[placeholder="e.g. Dr. সালাহউদ্দিন আহমেদ"]').fill('ডা. সালাহউদ্দিন আহমেদ')
+    await page.locator('input[placeholder="e.g. ঢাকা মেডিকেল কলেজ হাসপাতাল"]').fill('ঢাকা মেডিকেল কলেজ হাসপাতাল')
+    await page.locator('textarea[placeholder*="জটিল শিকড়"]').fill('জটিল কেস — এন্ডোডন্টিস্টের পরামর্শ প্রয়োজন')
+    await page.getByRole('button', { name: 'Save referral' }).click()
+    await page.waitForSelector('.modal >> text=New referral', { state: 'detached', timeout: 15_000 })
+    await page.waitForSelector('text=ডা. সালাহউদ্দিন আহমেদ', { timeout: 10_000 })
+    await page.getByRole('button', { name: 'Complete', exact: true }).click()
+    await page.waitForSelector('.badge:text-is("completed")', { timeout: 10_000 })
+  })
+
+  await step('about: settings About tab shows version and creator', async () => {
+    await page.locator('.nav-item', { hasText: 'Settings' }).click()
+    await page.locator('.tab', { hasText: 'About' }).click()
+    await page.waitForSelector('text=Created by', { timeout: 10_000 })
+    await page.waitForSelector('text=Fully offline', { timeout: 10_000 })
+  })
+
+  /* ---------------- appointments ---------------- */  await step('appointments: book a follow-up appointment', async () => {
     await page.locator('.nav-item', { hasText: 'Appointments' }).click()
     await page.getByRole('button', { name: 'New appointment' }).click()
     await page.locator('input[placeholder="Search patient by name or phone…"]').fill('আব্দুল')
@@ -347,6 +396,37 @@ async function main() {
     await inputs.nth(1).fill(OWNER.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await page.locator('.sidebar').waitFor({ timeout: 20_000 })
+  })
+
+  /* ---------------- sidebar collapse + keyboard shortcuts ---------------- */
+  await step('ui: sidebar collapses (64px, icons only, persisted) and re-expands', async () => {
+    await page.locator('.sidebar-toggle').click()
+    await page.waitForTimeout(300)
+    const collapsed = await page.evaluate(() => document.querySelector('.sidebar')?.classList.contains('collapsed'))
+    if (!collapsed) throw new Error('sidebar did not get the collapsed class')
+    const width = await page.evaluate(() => document.querySelector('.sidebar')?.getBoundingClientRect().width)
+    if (!width || Math.abs(width - 64) > 6) throw new Error(`collapsed sidebar width ${width}px, expected ~64px`)
+    // nav still usable while collapsed
+    await page.locator('.nav-item[title="Patients"]').click()
+    await page.waitForSelector('text=New patient', { timeout: 10_000 })
+    if ((await page.evaluate(() => localStorage.getItem('dentiva.sidebar'))) !== 'collapsed') throw new Error('collapse preference not persisted')
+    await page.locator('.sidebar-toggle').click()
+    await page.waitForTimeout(300)
+    const expanded = await page.evaluate(() => !document.querySelector('.sidebar')?.classList.contains('collapsed'))
+    if (!expanded) throw new Error('sidebar did not expand back')
+  })
+
+  await step('ui: Ctrl+K focuses global search', async () => {
+    await page.keyboard.press('Control+k')
+    const focused = await page.evaluate(() => document.activeElement?.closest('.searchbar') != null)
+    if (!focused) throw new Error('search input not focused after Ctrl+K')
+  })
+
+  await step('ui: Ctrl+N opens the new-patient form', async () => {
+    await page.keyboard.press('Control+n')
+    await page.locator('input[placeholder="Patient full name (Bangla or English)"]').waitFor({ timeout: 10_000 })
+    await page.keyboard.press('Escape') // modal Esc handler closes it
+    await page.waitForTimeout(400)
   })
 
   /* ---------------- full UI sweep at two resolutions ---------------- */

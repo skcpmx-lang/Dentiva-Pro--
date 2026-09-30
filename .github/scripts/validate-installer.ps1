@@ -18,9 +18,9 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
-function Ok($m)   { Write-Host "  [OK] $m" -ForegroundColor Green }
-function Die($m)  { Write-Host "  [FAIL] $m" -ForegroundColor Red; Set-Content -Path validation.failed -Value $m; exit 1 }
+function Step($m) { Write-Output ""; Write-Output "=== $m ===" }
+function Ok($m)   { Write-Output "  [OK] $m" }
+function Die($m)  { Write-Output "  [FAIL] $m"; Set-Content -Path validation.failed -Value $m; exit 1 }
 
 $productName = 'Dentiva Pro'
 $expectedVersion = '1.0.0'
@@ -48,7 +48,7 @@ Ok "FileDescription=$($vi.FileDescription)  LegalCopyright=$($vi.LegalCopyright)
 
 $sig = Get-AuthenticodeSignature $setup.FullName
 if ($sig.Status -eq 'Valid') { Ok 'Binary is code-signed' }
-else { Write-Host '  [NOTE] Binary is unsigned (expected in CI — code signing is an external release step)' -ForegroundColor Yellow }
+else { Write-Output '  [NOTE] Binary is unsigned (expected in CI — code signing is an external release step)' }
 
 # ------------------------------------------------------------------ checksum
 Step 'SHA-256 checksum'
@@ -102,6 +102,8 @@ Start-Sleep -Seconds 10
 if ($p.HasExited) { Die "Packaged app exited with code $($p.ExitCode) within 10 s of launch — crash on launch" }
 Ok "Packaged app launched (PID $($p.Id)) and stayed alive for 10 s"
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+try { $p.WaitForExit(20000) } catch { }
+Get-Process -Name 'Dentiva Pro' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 # ------------------------------------------------------------------ uninstall
@@ -115,4 +117,4 @@ $entry = Get-ChildItem $uninstallKey | Where-Object { $_.GetValue('DisplayName')
 if ($entry) { Die 'Uninstall registry entry still present after silent uninstall' }
 Ok 'App files and registry entry removed by silent uninstall'
 
-Write-Host "`nINSTALLER VALIDATION PASSED" -ForegroundColor Green
+Write-Output ""; Write-Output "INSTALLER VALIDATION PASSED"

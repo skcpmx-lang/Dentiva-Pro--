@@ -450,7 +450,18 @@ export interface DentivaApi {
 
   // referrals
   'referral.list': ChannelDef<VisitListQuery, Paginated<Referral>>
-  'referral.save': ChannelDef<Referral & { id?: number }, Referral>
+  'referral.save': ChannelDef<{
+    id?: number
+    patientId: number
+    visitId?: number | null
+    fromDentistId: number
+    toDoctorName: string
+    toClinic?: string | null
+    reason: string
+    notes?: string | null
+    status?: Referral['status']
+    followUpDate?: string | null
+  }, Referral>
   'referral.delete': ChannelDef<{ id: number }, { ok: true }>
 
   // appointments & queue

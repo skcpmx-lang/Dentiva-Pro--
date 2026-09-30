@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, CalendarClock, ListOrdered, Stethoscope, ClipboardList, FileText,
   ReceiptText, Boxes, Calculator, BarChart3, Bell, UserCog, ShieldCheck, ScrollText, Settings,
-  Lock, LogOut, Search, Grid3x3
+  Lock, LogOut, Search, Grid3x3, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
 import { useApp, can } from './store'
 import { call } from './ipc'
@@ -28,6 +28,7 @@ import { SettingsPage } from './pages/settings'
 
 export function App(): React.ReactNode {
   const { phase, boot, session } = useApp()
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('dentiva.sidebar') === 'collapsed')
 
   useEffect(() => {
     void boot()
@@ -37,6 +38,38 @@ export function App(): React.ReactNode {
     })
     return off
   }, [boot])
+
+  useEffect(() => {
+    localStorage.setItem('dentiva.sidebar', collapsed ? 'collapsed' : 'expanded')
+  }, [collapsed])
+
+  // Global keyboard shortcuts (docs/UI_UX_SPECIFICATION.md §Keyboard):
+  // Ctrl+K search · Ctrl+N new patient · Ctrl+1…9 sidebar jumps · Alt+←/→ history.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (phase !== 'ready') return
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        document.querySelector<HTMLInputElement>('.searchbar input')?.focus()
+        return
+      }
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        window.location.hash = '#/patients'
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('dentiva:new-patient')), 250)
+        return
+      }
+      if (e.altKey && !e.ctrlKey && e.key === 'ArrowLeft') { window.history.back(); return }
+      if (e.altKey && !e.ctrlKey && e.key === 'ArrowRight') { window.history.forward(); return }
+      if (e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        const items = Array.from(document.querySelectorAll<HTMLElement>('.nav .nav-item'))
+        const target = items[Number(e.key) - 1]
+        if (target) { e.preventDefault(); target.click() }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase])
 
   if (phase === 'loading') {
     return <div className="center-screen"><div className="spinner" style={{ borderTopColor: '#7ee3c8' }} /></div>
@@ -51,86 +84,93 @@ export function App(): React.ReactNode {
   return (
     <HashRouter>
       <div className="app-shell">
-        <aside className="sidebar">
+        <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
           <div className="sidebar-head">
-            <div className="sidebar-logo"><Stethoscope size={18} /></div>
-            <div>
+            <div className="sidebar-logo" title="Dentiva Pro"><Stethoscope size={18} /></div>
+            <div style={{ minWidth: 0 }}>
               <div className="sidebar-title">Dentiva Pro</div>
               <div className="sidebar-sub">{useApp.getState().clinic?.name ?? 'Dental Clinic'}</div>
             </div>
+            <button
+              className="sidebar-toggle"
+              onClick={() => setCollapsed(!collapsed)}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+            </button>
           </div>
           <nav className="nav">
-            <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Dashboard">
               <LayoutDashboard className="icon" size={17} /> Dashboard
             </NavLink>
             {can('patient.view') ? (
-              <NavLink to="/patients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/patients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Patients">
                 <Users className="icon" size={17} /> Patients
               </NavLink>
             ) : null}
             {can('appointment.view') ? (
-              <NavLink to="/appointments" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/appointments" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Appointments">
                 <CalendarClock className="icon" size={17} /> Appointments
               </NavLink>
             ) : null}
             {can('queue.view') ? (
-              <NavLink to="/queue" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/queue" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Queue">
                 <ListOrdered className="icon" size={17} /> Queue
               </NavLink>
             ) : null}
             {can('visit.view') ? (
-              <NavLink to="/visits" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/visits" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Visits">
                 <ClipboardList className="icon" size={17} /> Visits
               </NavLink>
             ) : null}
             {can('chart.view') ? (
-              <NavLink to="/chart" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/chart" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Dental Chart">
                 <Grid3x3 className="icon" size={17} /> Dental Chart
               </NavLink>
             ) : null}
             {can('prescription.view') ? (
-              <NavLink to="/prescriptions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/prescriptions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Prescriptions">
                 <FileText className="icon" size={17} /> Prescriptions
               </NavLink>
             ) : null}
             {can('invoice.view') ? (
-              <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/billing" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Billing">
                 <ReceiptText className="icon" size={17} /> Billing
               </NavLink>
             ) : null}
             <div className="nav-label">Manage</div>
             {can('inventory.view') ? (
-              <NavLink to="/inventory" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/inventory" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Inventory">
                 <Boxes className="icon" size={17} /> Inventory
               </NavLink>
             ) : null}
             {can('accounting.view') ? (
-              <NavLink to="/accounting" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/accounting" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Accounting">
                 <Calculator className="icon" size={17} /> Accounting
               </NavLink>
             ) : null}
             {can('report.view') ? (
-              <NavLink to="/reports" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/reports" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Reports">
                 <BarChart3 className="icon" size={17} /> Reports
               </NavLink>
             ) : null}
             {can('staff.view') ? (
-              <NavLink to="/staff" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/staff" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Staff">
                 <Users className="icon" size={17} /> Staff
               </NavLink>
             ) : null}
             {can('user.view') ? (
-              <NavLink to="/access" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/access" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Users & Roles">
                 <UserCog className="icon" size={17} /> Users &amp; Roles
               </NavLink>
             ) : null}
             {can('audit.view') ? (
-              <NavLink to="/audit" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/audit" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Audit Log">
                 <ScrollText className="icon" size={17} /> Audit Log
               </NavLink>
             ) : null}
             {can('settings.view') ? (
-              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Settings">
                 <Settings className="icon" size={17} /> Settings
               </NavLink>
             ) : null}

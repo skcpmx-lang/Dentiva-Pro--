@@ -28,7 +28,7 @@ function ItemsTab(): React.ReactNode {
   const [search, setSearch] = useState('')
   const [showItem, setShowItem] = useState(false)
   const [detail, setDetail] = useState<number | null>(null)
-  const [batchTarget, setBatchTarget] = useState<InventoryItem | null>(null)
+  const [batchTarget, setBatchTarget] = useState<InventoryItem | null | undefined>(undefined) // undefined = closed, null = picker mode
   const [moveTarget, setMoveTarget] = useState<InventoryItem | null>(null)
   const q = useDebounced(search)
 
@@ -51,7 +51,7 @@ function ItemsTab(): React.ReactNode {
       <div className="row">
         <SearchBar value={search} onChange={setSearch} placeholder="Search items by name or SKU…" />
         <div className="spacer" />
-        {can('inventory.manage') ? <Button onClick={() => setBatchTarget(rows?.[0] ?? null)} variant="ghost"><PackagePlus size={15} /> Quick add batch</Button> : null}
+        {can('inventory.manage') ? <Button onClick={() => setBatchTarget(null)} variant="ghost"><PackagePlus size={15} /> Add batch</Button> : null}
         {can('inventory.manage') ? <Button variant="primary" onClick={() => setShowItem(true)}><Plus size={15} /> New item</Button> : null}
       </div>
 
@@ -90,7 +90,7 @@ function ItemsTab(): React.ReactNode {
       </div>
 
       {showItem ? <ItemForm onClose={() => setShowItem(false)} onSaved={load} /> : null}
-      {batchTarget ? <BatchForm item={batchTarget} onClose={() => setBatchTarget(null)} onSaved={load} /> : null}
+      {batchTarget !== undefined ? <BatchForm item={batchTarget} onClose={() => setBatchTarget(undefined)} onSaved={load} /> : null}
       {moveTarget ? <MoveForm item={moveTarget} onClose={() => setMoveTarget(null)} onSaved={load} /> : null}
       {detail !== null ? <ItemDetail id={detail} onClose={() => setDetail(null)} /> : null}
     </div>
@@ -142,15 +142,22 @@ function ItemForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => Pr
   )
 }
 
-function BatchForm({ item, onClose, onSaved }: { item: InventoryItem; onClose: () => void; onSaved: () => Promise<void> }): React.ReactNode {
-  const [itemId, setItemId] = useState(item.id)
+function BatchForm({ item, onClose, onSaved }: { item: InventoryItem | null; onClose: () => void; onSaved: () => Promise<void> }): React.ReactNode {
+  // item === null → picker mode ("Quick add batch"): the user chooses the item.
+  const [items, setItems] = useState<InventoryItem[] | null>(item ? null : null)
+  const [itemId, setItemId] = useState<number | null>(item?.id ?? null)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [form, setForm] = useState({ supplierId: '', purchaseDate: todayISO(), batchNo: '', expiryDate: '', purchaseCost: 0, qtyPurchased: 1 })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
     void call('supplier.list').then(setSuppliers).catch(() => setSuppliers([]))
-  }, [])
+    if (!item) {
+      void call('inventory.items', { page: 1, pageSize: 200 })
+        .then((r) => setItems(r.rows))
+        .catch(() => setItems([]))
+    }
+  }, [item])
   return (
     <Modal
       title="Add stock batch" onClose={onClose}
@@ -158,12 +165,12 @@ function BatchForm({ item, onClose, onSaved }: { item: InventoryItem; onClose: (
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button
-            variant="primary" loading={busy} disabled={form.qtyPurchased <= 0}
+            variant="primary" loading={busy} disabled={form.qtyPurchased <= 0 || itemId === null}
             onClick={async () => {
               setBusy(true); setError('')
               try {
                 await call('inventory.addBatch', {
-                  itemId, supplierId: form.supplierId ? Number(form.supplierId) : null,
+                  itemId: itemId ?? 0, supplierId: form.supplierId ? Number(form.supplierId) : null,
                   purchaseDate: form.purchaseDate, batchNo: form.batchNo || null,
                   expiryDate: form.expiryDate || null,
                   purchaseCost: Math.round(form.purchaseCost * 100), qtyPurchased: form.qtyPurchased
@@ -183,9 +190,20 @@ function BatchForm({ item, onClose, onSaved }: { item: InventoryItem; onClose: (
     >
       <div className="form-grid">
         <Field label="Item" required span>
-          <select className="select" value={itemId} onChange={(e) => setItemId(Number(e.target.value))} disabled={!!item.id && item.currentStock > -1 && item.id !== undefined && itemId === item.id && false}>
-            <option value={item.id}>{item.name}</option>
-          </select>
+          {item ? (
+            <div className="row" style={{ padding: '8px 0' }}>
+              <b>{item.name}</b>
+              {item.sku ? <span className="text-faint text-mono">{item.sku}</span> : null}
+              <span className="text-faint text-small">current stock: {item.currentStock} {item.unit}</span>
+            </div>
+          ) : items === null ? (
+            <Loading />
+          ) : (
+            <select className="select" value={itemId ?? ''} onChange={(e) => setItemId(e.target.value ? Number(e.target.value) : null)}>
+              <option value="" disabled>{items.length === 0 ? 'No inventory items exist yet' : 'Choose an item…'}</option>
+              {items.map((it) => <option key={it.id} value={it.id}>{it.name}{it.sku ? ` (${it.sku})` : ''} — stock {it.currentStock}</option>)}
+            </select>
+          )}
         </Field>
         <Field label="Supplier">
           <select className="select" value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>

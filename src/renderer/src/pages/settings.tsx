@@ -6,7 +6,7 @@ import { Button, ConfirmDialog, EmptyState, Field, Loading, Modal, StatusBadge, 
 import { formatDateTimeHuman } from '@shared/dates'
 import type { ClinicRow } from '@shared/types'
 
-type Tab = 'clinic' | 'app' | 'backup' | 'danger'
+type Tab = 'clinic' | 'app' | 'backup' | 'danger' | 'about'
 
 export function SettingsPage(): React.ReactNode {
   const [tab, setTab] = useState<Tab>('clinic')
@@ -17,8 +17,9 @@ export function SettingsPage(): React.ReactNode {
         <button className={`tab ${tab === 'app' ? 'active' : ''}`} onClick={() => setTab('app')}>Application</button>
         <button className={`tab ${tab === 'backup' ? 'active' : ''}`} onClick={() => setTab('backup')}>Backup &amp; restore</button>
         {can('business.delete') ? <button className={`tab ${tab === 'danger' ? 'active' : ''}`} onClick={() => setTab('danger')}>Danger zone</button> : null}
+        <button className={`tab ${tab === 'about' ? 'active' : ''}`} onClick={() => setTab('about')}>About</button>
       </div>
-      {tab === 'clinic' ? <ClinicTab /> : tab === 'app' ? <AppTab /> : tab === 'backup' ? <BackupTab /> : <DangerTab />}
+      {tab === 'clinic' ? <ClinicTab /> : tab === 'app' ? <AppTab /> : tab === 'backup' ? <BackupTab /> : tab === 'about' ? <AboutTab /> : <DangerTab />}
     </div>
   )
 }
@@ -532,7 +533,7 @@ function DangerTab(): React.ReactNode {
           Document numbering restarts from 1.
         </p>
         <div className="row mt-2">
-          <Button variant="danger" onClick={() => setConfirm('business')}>Delete all business data…</Button>
+          <Button variant="danger" disabled={busy} onClick={() => setConfirm('business')}>Delete all business data…</Button>
         </div>
       </div>
 
@@ -543,7 +544,7 @@ function DangerTab(): React.ReactNode {
           After the reset the app asks for a new activation code.
         </p>
         <div className="row mt-2">
-          <Button variant="danger" onClick={() => setConfirm('factory')}>Factory reset…</Button>
+          <Button variant="danger" disabled={busy} onClick={() => setConfirm('factory')}>Factory reset…</Button>
         </div>
       </div>
 
@@ -577,9 +578,35 @@ function DangerTab(): React.ReactNode {
           onClose={() => setConfirm(null)}
         />
       ) : null}
-      {void busy}
     </div>
   )
 }
 
 export { money }
+
+/* ================= About ================= */
+function AboutTab(): React.ReactNode {
+  const [about, setAbout] = useState<Awaited<ReturnType<typeof call<'system.about'>>> | null>(null)
+  useEffect(() => {
+    void call('system.about').then(setAbout).catch(() => setAbout(null))
+  }, [])
+  return (
+    <div className="card card-pad">
+      <div className="section-title">About Dentiva Pro</div>
+      {about ? (
+        <dl className="kv">
+          <dt>Application</dt><dd><b>Dentiva Pro</b> v{about.version}</dd>
+          <dt>Created by</dt><dd>{about.creatorName} · {about.creatorEmail}</dd>
+          <dt>Database</dt><dd className="text-mono text-small">{about.dbPath}</dd>
+          <dt>Operation</dt><dd>Fully offline — patient data never leaves this computer.</dd>
+        </dl>
+      ) : (
+        <Loading />
+      )}
+      <p className="text-soft text-small mt-2">
+        Premium offline dental clinic management software for Bangladesh · Bengali-safe records, prescriptions and invoices ·
+        keyboard shortcuts: Ctrl+K search · Ctrl+N new patient · Ctrl+1–9 sidebar · Alt+←/→ history.
+      </p>
+    </div>
+  )
+}

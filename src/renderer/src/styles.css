@@ -80,6 +80,25 @@ input, textarea { user-select: text; }
 .sidebar-foot { border-top: 1px solid #1b4243; padding-top: 10px; margin-top: 8px; -webkit-app-region: no-drag; }
 .user-chip { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; }
 .user-chip:hover { background: #12393a; cursor: pointer; }
+
+/* ---------- sidebar collapse (persisted preference, tooltips via title=) ---------- */
+.sidebar { transition: width 0.15s ease; }
+.sidebar.collapsed { width: 64px; }
+.sidebar.collapsed .sidebar-head { flex-direction: column; gap: 8px; padding: 4px 0 14px; }
+.sidebar.collapsed .sidebar-title,
+.sidebar.collapsed .sidebar-sub,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .user-name,
+.sidebar.collapsed .user-role { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; gap: 0; padding: 9px 0; font-size: 0; }
+.sidebar.collapsed .sidebar-foot { padding-left: 0; padding-right: 0; }
+.sidebar.collapsed .user-chip { justify-content: center; padding: 6px 0; }
+.sidebar-toggle {
+  border: none; background: none; color: #86a8a3; cursor: pointer; padding: 5px;
+  border-radius: 6px; display: grid; place-items: center; flex: none;
+  -webkit-app-region: no-drag;
+}
+.sidebar-toggle:hover { background: #12393a; color: #ffffff; }
 .avatar { width: 30px; height: 30px; border-radius: 99px; background: #0c6b5e; color: #dffaf3; display: grid; place-items: center; font-weight: 700; font-size: 12.5px; flex: none; }
 .user-name { font-size: 12.5px; color: #e6f4f1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-role { font-size: 10.5px; color: #86a8a3; }

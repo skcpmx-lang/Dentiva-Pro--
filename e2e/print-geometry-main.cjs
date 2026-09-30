@@ -17,6 +17,13 @@ if (!bundlePath || !resultPath || !dataDir || !fontsDir) {
   process.exit(2)
 }
 
+// Software-GL CI environments: printToPDF's compositor fails to read pages
+// back when HW acceleration is on with xvfb/SwiftShader. This is the
+// test-runner binary only — the shipped app keeps default acceleration.
+try {
+  app.disableHardwareAcceleration()
+} catch { /* older electron */ }
+
 // Scheme privileges must be registered before app 'ready'.
 let bundle
 try {
