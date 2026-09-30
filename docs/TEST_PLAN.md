@@ -36,4 +36,18 @@ Every screen manually inspected in the dev sandbox at 1280×720 / 1920×1080 (li
 
 Cannot be performed in this environment and therefore **not claimed**: physical printing on real printers, real multi-monitor DPI, clean-machine installer run on bare Windows hardware (CI windows-latest is the closest substitute and is used), uninstall on end-user hardware. Each is listed in `RELEASE_CHECKLIST.md` with the exact remaining external validation step.
 
-## 8. Stress Results (filled from actual measured runs — see `tests/stress` output recorded in TEST_REPORT section of final delivery)
+## 8. Stress Results (measured 2026-09-30, build sandbox, `tests/stress.test.ts`)
+
+Dataset: 10,000 patients (Bengali names) · 20,000 visits · 15,000 invoices + 15,000 payments · real SQLite in a temp dir, production migration + seed.
+
+| Operation | Measured | Ceiling |
+|---|---|---|
+| Bulk seed (45k rows, one transaction) | 0.4 s | — |
+| `patientList` (preset all, page 1) | 25 ms | 500 ms |
+| Patient search, Bengali text (রহমান…) | 10 ms | 500 ms |
+| Patient profile (aggregates + timeline) | < 5 ms | 300 ms |
+| `invoiceList` / `paymentList` / `paymentSummary` | 6 / 4 / 5 ms | 500 ms |
+| `dashboardGet` / `globalSearch` | 3 / 12 ms | 800 ms |
+| Backup create + verify (full dataset) | 0.4 s · 1.3 MB · verified | 60 s |
+
+All hot paths remain interactive at spec volumes; timings recorded via console output during the run and asserted against the ceilings in CI.
