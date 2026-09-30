@@ -187,3 +187,71 @@ jobs:
             echo '```'
           } > /tmp/inst-failure.md
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/inst-failure.md
+
+  windows-packaged-e2e:
+    name: Packaged full-flow E2E (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The real activation code never enters this repo. For the packaged E2E
+      # build a THROWAWAY verifier is compiled in (random salt, throwaway code).
+      # The code below is not a secret: it only activates this CI-only build.
+      - name: Compile throwaway activation verifier (e2e-only build)
+        run: node scripts/gen-activation-verifier.mjs 5108239461370256
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Package app (unpacked, no installer)
+        shell: pwsh
+        run: |
+          npx electron-builder --win --x64 --dir 2>&1 | Tee-Object -FilePath dist-unpacked.log
+          exit $LASTEXITCODE
+
+      # Full clinical + billing + print + backup flow against the PACKAGED app,
+      # real default user-data paths, real printToPDF output on disk.
+      - name: Run full-flow E2E against the packaged app
+        env:
+          DENTIVA_E2E_CODE: '5108239461370256'
+        shell: pwsh
+        run: |
+          node e2e/full.mjs 2>&1 | Tee-Object -FilePath full-e2e.log
+          exit $LASTEXITCODE
+
+      - name: Report packaged E2E failure log on the PR
+        if: failure() && github.event.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          {
+            echo "### 🤖 Automated packaged E2E failure log (commit \`${{ github.sha }}\`)"
+            echo
+            echo '**full-e2e.log (tail)**'
+            echo '```'
+            tail -n 120 full-e2e.log 2>/dev/null || true
+            echo '```'
+          } > /tmp/fulle2e-failure.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/fulle2e-failure.md
+
+      - name: Upload E2E screenshots (evidence of each stage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-screenshots
+          path: e2e/artifacts/
+          if-no-files-found: ignore

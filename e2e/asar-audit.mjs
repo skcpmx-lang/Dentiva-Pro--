@@ -34,7 +34,11 @@ const notes = []
 const fail = (msg) => failures.push(msg)
 
 // ---------------------------------------------------------------- 1. listing
-const entries = asar.listPackage(asarPath).map((e) => String(e).replace(/^\//, ''))
+// asar entries use backslashes on Windows and may carry a leading slash —
+// normalize to forward-slash relative paths for all checks below.
+const entries = asar
+  .listPackage(asarPath)
+  .map((e) => String(e).replace(/\\/g, '/').replace(/^\//, ''))
 console.log(`Archive: ${asarPath}`)
 console.log(`Total entries: ${entries.length}`)
 

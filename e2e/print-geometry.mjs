@@ -56,9 +56,11 @@ async function main() {
   }
   if (!existsSync(String(electronBin))) die(`electron binary not found at ${electronBin}`)
 
-  // 3. Run inside Electron.
+  // 3. Run inside Electron. --no-sandbox: CI containers cannot use the SUID
+  //    chrome-sandbox helper (this is the test-runner electron binary, not the
+  //    packaged app — the shipped app keeps its sandbox).
   console.log('→ running print geometry suite inside Electron…\n')
-  const run = spawnSync(String(electronBin), [join(root, 'e2e', 'print-geometry-main.cjs')], {
+  const run = spawnSync(String(electronBin), ['--no-sandbox', join(root, 'e2e', 'print-geometry-main.cjs')], {
     cwd: root,
     stdio: ['ignore', 'inherit', 'inherit'],
     env: {
@@ -68,6 +70,7 @@ async function main() {
       PG_DATA: dataDir,
       PG_FONTS: fontsDir,
       NODE_ENV: 'test',
+      ELECTRON_DISABLE_SANDBOX: '1',
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1'
     },
     timeout: 180_000

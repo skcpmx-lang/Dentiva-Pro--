@@ -8,15 +8,21 @@ directories:
   output: release
 
 # Only the compiled bundles ship; runtime node_modules are auto-included from
-# "dependencies" (better-sqlite3, archiver, extract-zip, zod). Sources, tests,
-# docs and maps are pruned — the asar audit (e2e/asar-audit.mjs) enforces this.
+# "dependencies" (better-sqlite3, archiver, extract-zip, zod). Sources, type
+# declarations, tests, docs and maps are pruned — the asar audit
+# (e2e/asar-audit.mjs) enforces this.
 files:
   - out/**
   - package.json
   - "!**/*.map"
   - "!node_modules/**/{test,tests,__tests__}/**"
   - "!node_modules/**/*.md"
+  - "!node_modules/**/*.d.ts"
+  - "!node_modules/**/*.d.cts"
+  - "!node_modules/**/*.d.mts"
+  - "!node_modules/@types/**"
   - "!node_modules/zod/src/**"
+  - "!node_modules/**/bower.json"
 
 # Native module must live outside the asar archive.
 asarUnpack:
