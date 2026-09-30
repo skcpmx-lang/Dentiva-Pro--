@@ -7,7 +7,20 @@ import { ADULT_TEETH, PEDIATRIC_TEETH, type Dentition } from '@shared/enums'
 import { audit } from './audit'
 
 export function toothConditions(ctx: AppContext): ToothCondition[] {
-  return ctx.db.prepare('SELECT * FROM tooth_conditions ORDER BY sort_order, name').all() as unknown as ToothCondition[]
+  const rows = ctx.db.prepare('SELECT * FROM tooth_conditions ORDER BY sort_order, name').all() as Array<{
+    id: number; code: string; name: string; color: string; is_system: number; is_active: number; sort_order: number
+  }>
+  // Map to the camelCase ToothCondition contract — the chart UI filters on
+  // isActive, so a raw snake_case row would hide every condition.
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    color: r.color,
+    isSystem: r.is_system === 1,
+    isActive: r.is_active === 1,
+    sortOrder: r.sort_order
+  }))
 }
 
 const conditionSchema = z.object({

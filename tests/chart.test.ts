@@ -93,4 +93,20 @@ describe('dental chart', () => {
   it('patient list is unaffected by chart data (regression guard)', () => {
     expect(patientList(env.ctx, env.owner, { preset: 'all', page: 1, pageSize: 50 }).total).toBeGreaterThanOrEqual(2)
   })
+
+  it('returns tooth conditions in the camelCase shape the chart UI filters on', () => {
+    // Regression: toothConditions once leaked raw snake_case rows — the chart
+    // page filters conditions on isActive, so every condition was hidden and
+    // the condition dropdown only ever showed "Sound / clear".
+    const conds = toothConditions(env.ctx)
+    expect(conds.length).toBeGreaterThan(5)
+    for (const c of conds) {
+      expect(c.isActive).toBe(true)
+      expect(typeof c.isSystem).toBe('boolean')
+      expect(typeof c.sortOrder).toBe('number')
+      expect(Object.keys(c)).not.toContain('is_active')
+      expect(Object.keys(c)).not.toContain('sort_order')
+    }
+    expect(conds.find((c) => c.name === 'Caries')?.isSystem).toBe(true)
+  })
 })

@@ -9,6 +9,8 @@
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { BrowserWindow } from 'electron'
 import { buildPaths } from '../src/main/core/paths'
 import { PrintManager, countPdfPages, pdfFirstPageSizePoints, readPdfForTest } from '../src/main/app/print'
 import { registerSafeProtocol, registerSchemePrivilege } from '../src/main/app/protocol'
@@ -148,6 +150,50 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
     } catch (e) {
       record(name, false, e instanceof Error ? e.message : String(e))
     }
+  }
+
+  /* ---------------- differential diagnostics (run first) ---------------- */
+  // A CI failure mode ("CompositePages: Page reading failed" → printToPDF
+  // rejects) must be attributable to the environment vs the content. The
+  // minimal case uses no webfonts; the font-diagnostics case loads one
+  // bundled font over dentiva-safe:// and reports fetch/load status, then
+  // prints the same page.
+  await assertGeometry('minimal Latin page prints (no webfonts)', {
+    html: '<!DOCTYPE html><html><head><style>@page { size: A4; margin: 0 }</style></head><body><h1>Minimal print test</h1><p>Plain Latin content, default fonts only.</p></body></html>',
+    paper: 'a4', marginMm: 0
+  }, { width: 210, height: 297 })
+
+  try {
+    const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+    try {
+      const id = randomUUID()
+      const htmlPath = join(paths.tempDir, `${id}-fontdiag.html`)
+      writeFileSync(htmlPath, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        @font-face { font-family: 'Noto Sans Bengali'; src: url('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.woff2') format('woff2'); }
+        body { font-family: 'Noto Sans Bengali'; }
+      </style></head><body><p id="t">বাংলা পরীক্ষা</p><script>
+        window.__diag = { status: document.fonts.status }
+        document.fonts.ready.then(() => { window.__diag.ready = true; window.__diag.statusAfter = document.fonts.status })
+        Promise.all(Array.from(document.fonts).map((f) => f.load().then(() => 'ok', (e) => 'fail:' + (e && e.message ? e.message : e)))).then((r) => { window.__diag.loads = r })
+        fetch('dentiva-safe://fonts/noto-sans-bengali-bengali-400-normal.woff2').then((r) => { window.__diag.fetchStatus = r.status }, (e) => { window.__diag.fetchStatus = 'err:' + (e && e.message ? e.message : e) })
+      <\/script></body></html>`, 'utf8')
+      await win.loadURL(`dentiva-safe://temp/${id}-fontdiag.html`)
+      await new Promise((r) => setTimeout(r, 1500))
+      const diag = (await win.webContents.executeJavaScript('window.__diag')) as Record<string, unknown>
+      const fetchOk = diag.fetchStatus === 200
+      record('font diagnostics: dentiva-safe:// font fetch', fetchOk, JSON.stringify(diag))
+      try {
+        const pdf = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
+        const embedded = pdf.toString('latin1').includes('NotoSansBengali')
+        record('font diagnostics: printToPDF with webfont', pdf.length > 1000, `pdf=${pdf.length} bytes, fontEmbedded=${embedded}`)
+      } catch (e) {
+        record('font diagnostics: printToPDF with webfont', false, e instanceof Error ? e.message : String(e))
+      }
+    } finally {
+      win.destroy()
+    }
+  } catch (e) {
+    record('font diagnostics', false, e instanceof Error ? e.message : String(e))
   }
 
   /* ---------------- paper geometry (MediaBox in points) ---------------- */

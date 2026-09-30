@@ -17,12 +17,11 @@ if (!bundlePath || !resultPath || !dataDir || !fontsDir) {
   process.exit(2)
 }
 
-// Software-GL CI environments: printToPDF's compositor fails to read pages
-// back when HW acceleration is on with xvfb/SwiftShader. This is the
-// test-runner binary only — the shipped app keeps default acceleration.
-try {
-  app.disableHardwareAcceleration()
-} catch { /* older electron */ }
+// Linux CI printing: default Chromium rendering paths work under a 24-bit
+// Xvfb (llvmpipe/SwiftShader); forcing software rendering via
+// app.disableHardwareAcceleration()/--disable-gpu was tried and did NOT fix
+// the compositor failure, so defaults are kept. This is the test-runner
+// binary only — the shipped app keeps default settings.
 
 // Scheme privileges must be registered before app 'ready'.
 let bundle

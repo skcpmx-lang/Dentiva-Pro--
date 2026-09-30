@@ -5,7 +5,7 @@
 
 ## Current Phase
 
-Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 tests); CI `verify` green and **windows-installer job GREEN on 236e84c (run 36719098611 — full installer end-to-end validation passed)**. Packaged full-flow E2E reached 16/30 and exposed a real product defect (patientList snake_case leak — fixed); print-geometry failure root-caused to a printToPDF/web-font race (fixed). Fixes committed locally, CI re-run pending.
+Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 tests); CI `verify` green and **windows-installer job GREEN on 236e84c (run 36719098611 — full installer end-to-end validation passed)**. Packaged full-flow E2E reached 16/30 and exposed a real product defect (patientList snake_case leak — fixed); print-geometry failure root-caused to a printToPDF/web-font race (fixed). Fixes committed locally, CI re-run pending.
 
 | Phase | Description | Status |
 |---|---|---|
@@ -13,7 +13,7 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 te
 | 1 | Planning & engineering documents | Done (kept synchronized) |
 | 2 | Architecture scaffold, toolchain, CI config | Done (4-job CI workflow: verify, e2e, windows-installer, windows-packaged-e2e) |
 | 3 | Implementation: database, services, renderer, printing | Done — trusted main process (25 RBAC-enforcing services, typed IPC router, print pipeline, secure protocol, zip-guard) + complete renderer incl. sidebar collapse/shortcuts, referral UI, About tab |
-| 4 | Testing: unit, integration, workflow, stress, E2E | Service level done — **151 tests / 13 files** (42-step workflow, stress 10k/20k/15k, zip-guard, patientList row-shape regression); CI e2e smoke green (36696431273, 36696796492); installer validation green (36719098611); packaged E2E 16/30 + geometry ✗ → both root-caused, fixes pending CI |
+| 4 | Testing: unit, integration, workflow, stress, E2E | Service level done — **152 tests / 13 files** (42-step workflow, stress 10k/20k/15k, zip-guard, patientList + toothConditions row-shape regressions); CI e2e smoke green (36696431273, 36696796492); installer validation green (36719098611); packaged E2E 16/30 + geometry ✗ → both root-caused, fixes pending CI |
 | 5 | Audit & fix cycle | In Progress — lint/typecheck/dead-code/secret scans clean; npm audit: 1 high (extract-zip) documented + mitigated (R-16, zipGuard, yauzl pinned); UI visual QA on real display EXTERNAL |
 | 6 | Release build (Windows installer via CI) + validation | Installer validation **passed** (236e84c, run 36719098611); packaged-app E2E re-run pending |
 | 7 | GitHub delivery (PR + Release) | PR #1 open (never merged — release gate not passed); GitHub Release pending |
@@ -25,13 +25,13 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 te
 - Bengali Unicode font (Noto Sans Bengali, SIL OFL 1.1) bundled as extraResources with license notice.
 - Trusted main process: schema v1 migration + seed, 25 services w/ service-layer RBAC, typed IPC router w/ permission table, print-to-PDF pipeline, `dentiva-safe://` prefix-validated protocol, scrypt activation verifier, zipGuard pre-extraction scan on both backup-restore extract sites.
 - Complete renderer: 14+ pages, print templates (A5 rx / A4 invoice / 80 mm receipt), collapsible sidebar + keyboard shortcuts (Ctrl+K/N/1–9, Alt+←/→), patient referrals UI, About tab.
-- Test suites: smoke 18, auth 10, rbac 9, staff 12, accounting 6, chart 7, inventory 8, backup 7, destructive 3, workflow 42 steps, stress 6, print-templates 18, zip-guard 6 = **151 tests / 13 files, all passing**.
+- Test suites: smoke 18, auth 10, rbac 9, staff 12, accounting 6, chart 8, inventory 8, backup 7, destructive 3, workflow 42 steps, stress 6, print-templates 18, zip-guard 6 = **152 tests / 13 files, all passing**.
 - E2E tooling: `e2e/run.mjs` (Playwright-Electron smoke), `e2e/print-geometry.mjs` (real PDF MediaBox/geometry assertions, crash-resilient JSONL case log), `e2e/full.mjs` (28-step packaged-app flow w/ per-step page diagnostics + modal recovery), `e2e/asar-audit.mjs` (packaged secret/sourcemap scan), `.github/scripts/validate-installer.ps1` (registry/shortcut/launch/uninstall validation against real NSIS defaults).
 - CI: 4 jobs; PR diagnostic comments on failure (400-line tails) since Actions blob storage is unreachable from the sandbox.
 
 ## Current Task
 
-1. Push the patientList + print-fonts fixes; watch the next CI run (verify + e2e geometry + windows-packaged-e2e must all go green).
+1. CI run 36722132504 (32a43ca) diagnosed; second round of defect fixes committed — push and watch the next run (verify + e2e geometry + windows-packaged-e2e must all go green).
 
 ## Next Tasks
 
@@ -42,10 +42,17 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 te
 
 ## Failed Tests / Unresolved Issues
 
-- **36719098611 (236e84c) — two jobs failed; both root-caused and fixed (fixes not yet CI-verified):**
+- **36722132504 (32a43ca): verify ✓, windows-installer ✓, packaged E2E 23/30, e2e geometry ✗ (same signature). Round-2 root causes, all fixed locally (not yet CI-verified):**
+  - *packaged E2E 23/30.* The patientList fix unblocked queue/referrals/appointments/restore/global-search/destructive steps. Remaining failures root-caused to three REAL defects + one test bug, all fixed:
+    1. `toothConditions` leaked snake_case rows (`is_active` etc.) — the chart UI filters on `isActive`, so the condition dropdown showed only "Sound / clear". Mapped to the ToothCondition contract + chart regression test.
+    2. **RxForm and InvoiceForm patient pickers rendered NO result list** — the search input existed but results were never rendered, so prescriptions/invoices could not be created from those pages at all. Both now render result buttons (same pattern as the working queue/visits/appointments pickers).
+    3. Test bug: the visit form starts with zero treatment lines — the step now clicks "Add treatment" first.
+    (payments/print/invoice-void steps were cascade failures — no invoice existed.)
+  - *e2e geometry:* same "CompositePages: Page reading failed" on the A4 case plus A5 loadURL ERR_FAILED and SIGTRAP; the fonts-ready wait did not change it. New hardening + differential diagnostics: (a) `dentiva-safe://` handler now returns documented Buffer bodies instead of a Node fs stream cast to ReadableStream (undefined behavior — plausible cause of the intermittent ERR_FAILED load and broken font subresource fetches); (b) harness: `--disable-gpu`/disableHardwareAcceleration removed (both prior runs were software-rendered and still failed; defaults kept), `--disable-dev-shm-usage` added (Linux print-compositor shm defense); (c) two diagnostic cases run FIRST — a minimal no-webfont print and a font-pipeline diagnostics case (fetch status, FontFace load results, then printToPDF of the same page) — so the next log pinpoints environment vs content regardless of outcome.
+- **36719098611 (236e84c) — round-1 root causes (all fixed in 32a43ca):**
   - *windows-packaged-e2e: 16/30.* Dominant cause: `patientList` returned raw snake_case rows (`full_name`, `patient_code`) while the UI renders camelCase — every patients-list column and every patient-picker button rendered **blank**, so all name-based lookups timed out (create→profile navigation and the preselected-patient visit form were secondary test bugs). FIXED: service maps rows to the `PatientListRow` contract (+ regression tests: row shape, no snake_case leak, `sort: 'lastVisit'` SQL crash, `status: 'all'`); test steps now follow the app's real post-create navigation and preselected visit form. This was a REAL product defect found by E2E, not a test artifact.
   - *e2e (ubuntu): smoke ✓; geometry ✗.* `printToPDF` rejected with "Printing failed" (`print_compositor_impl.cc:405 CompositePages: Page reading failed`), then a follow-on load ERR_FAILED and SIGTRAP. Root cause: printToPDF raced the eight async `@font-face` loads over `dentiva-safe://fonts` — did-finish-load does not wait for web fonts, and printing mid-font-load breaks the compositor's Skia deserialization (Puppeteer fixed the identical race by awaiting `document.fonts.ready` before Page.printToPDF). FIXED: `PrintManager.renderPdf` awaits `document.fonts.ready` (bounded 5 s). The earlier 24-bit-xvfb theory was insufficient — the depth/GPU flags stay (correct for readback) but were not the root cause.
-- **windows-installer job: PASSED on 236e84c** — the DisplayName validator fix is confirmed (registry "Dentiva Pro 1.0.0", shortcut, launch, uninstall all validated).
+- **windows-installer job: PASSED on 236e84c and again on 32a43ca** — the DisplayName validator fix is confirmed (registry "Dentiva Pro 1.0.0", shortcut, launch, uninstall all validated).
 - Resolved earlier (history): 36702956138 — installer DisplayName validator bug; packaged-E2E modal cascade (9/30); geometry "needs 24-bit xvfb" (partially right, insufficient).
 
 ## Blockers
@@ -56,8 +63,8 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 te
 
 ## Last Verified Commit
 
-- `236e84c` (pushed): verify ✓, windows-installer ✓ (full installer validation), packaged-E2E 16/30, e2e geometry ✗ — all failures root-caused; fixes for the two failures sit locally on top of 236e84c (patientList mapping + regression tests, print fonts-ready wait, full.mjs create/visit steps), pending push + CI.
-- Local gate on the pending fixes: typecheck ✓ lint ✓ **151/151 tests** ✓ build ✓ full.mjs `node --check` ✓.
+- `32a43ca` (pushed): verify ✓, windows-installer ✓, packaged-E2E 23/30, e2e geometry ✗ — round-2 fixes (toothConditions mapping, RxForm/InvoiceForm picker lists, Buffer protocol bodies, geometry diagnostics + flags, visit-step fix) sit locally on top, pending push + CI.
+- Local gate on the round-2 fixes: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ harness `node --check` ✓.
 - Previous full green: `ff258bd` / run 36696431273 (verify + e2e smoke, before Windows jobs existed).
 
 ## Build Status
@@ -65,10 +72,10 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (151 te
 Sandbox-local gate on 236e84c (all green, verified 2026-09-30):
 
 - `npm run typecheck`: clean. `npm run lint`: clean.
-- `npm test`: **151/151 across 13 files**.
+- `npm test`: **152/152 across 13 files**.
 - `npm run build`: succeeds.
 - `npm run dist`: not runnable in sandbox (no Windows/electron-builder targets here); performed on CI `windows-installer` job.
-- GitHub Actions (run 36719098611, commit 236e84c): verify ✓, windows-installer ✓, e2e ✗ (geometry — fonts race, fixed locally), windows-packaged-e2e ✗ (16/30 — patientList defect, fixed locally). Next run must confirm all four green.
+- GitHub Actions: run 36719098611 (236e84c) and 36722132504 (32a43ca): verify ✓, windows-installer ✓ both times; e2e geometry ✗, packaged E2E 16/30 → 23/30 (three more real defects fixed locally). Next run must confirm all four green.
 
 ## Release Status
 

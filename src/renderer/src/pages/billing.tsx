@@ -445,7 +445,18 @@ export function InvoiceForm({ presetPatientId, onClose, onSaved, onOpen }: { pre
                 <Button size="sm" onClick={() => { setPatientId(null); setPatientSearch('') }}>Change</Button>
               </div>
             ) : (
-              <input className="input" value={patientSearch} onChange={(e) => setPatientSearch(e.target.value)} placeholder="Search patient…" autoFocus />
+              <>
+                <input className="input" value={patientSearch} onChange={(e) => setPatientSearch(e.target.value)} placeholder="Search patient…" autoFocus />
+                {patients.length > 0 ? (
+                  <div className="mt-1 col" style={{ gap: 2 }}>
+                    {patients.map((p) => (
+                      <button key={p.id} type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={() => { setPatientId(p.id); setPatientSearch('') }}>
+                        <b>{p.fullName}</b> <span className="text-faint">{p.patientCode}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             )}
           </Field>
           <Field label="Dentist">

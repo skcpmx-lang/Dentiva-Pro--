@@ -3,7 +3,7 @@
 Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Passed`. Evidence cites source, tests, E2E and CI; statuses are updated only after verification. **Passed** is reserved for requirements additionally validated on the real packaged app / real CI environment.
 
 **Evidence key (this revision):**
-- **Unit/integration (vitest, 151 tests / 13 files, all green locally + CI `verify` job):** `tests/smoke.test.ts` (18), `tests/auth.test.ts` (10), `tests/rbac.test.ts` (9), `tests/staff.test.ts` (12), `tests/accounting.test.ts` (6), `tests/chart.test.ts` (7), `tests/inventory.test.ts` (8), `tests/backup.test.ts` (7), `tests/destructive.test.ts` (3), `tests/workflow.test.ts` (42-step business workflow), `tests/stress.test.ts` (6), `tests/print-templates.test.ts` (18), `tests/zip-guard.test.ts` (6).
+- **Unit/integration (vitest, 152 tests / 13 files, all green locally + CI `verify` job):** `tests/smoke.test.ts` (18), `tests/auth.test.ts` (10), `tests/rbac.test.ts` (9), `tests/staff.test.ts` (12), `tests/accounting.test.ts` (6), `tests/chart.test.ts` (7), `tests/inventory.test.ts` (8), `tests/backup.test.ts` (7), `tests/destructive.test.ts` (3), `tests/workflow.test.ts` (42-step business workflow), `tests/stress.test.ts` (6), `tests/print-templates.test.ts` (18), `tests/zip-guard.test.ts` (6).
 - **CI jobs (.github/workflows/ci.yml):** `verify` (typecheck + lint + 151 tests + build), `e2e` (ubuntu: Playwright-Electron smoke + print/PDF geometry suite), `windows-installer` (real NSIS build + asar audit + installer end-to-end validation), `windows-packaged-e2e` (full clinical flow against the packaged Windows app).
 - **CI E2E smoke passed** on real Electron under xvfb: runs [36696431273](https://github.com/skcpmx-lang/Dentiva-Pro--/actions/runs/36696431273), [36696796492](https://github.com/skcpmx-lang/Dentiva-Pro--/actions/runs/36696796492).
 - The installer / packaged-E2E / print-geometry jobs are running against commit `236e84c` — rows below say "CI run pending" where their result is not yet in. They will be promoted to Passed only when the actual run is green.
@@ -79,9 +79,9 @@ Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Pass
 | REQ-VIS-001 | Visits: spec §24 fields, links, price snapshots, immutable history | Tested | visits service; workflow step 13 (treatment lines with price snapshot), step 16 (invoice from visit) |
 | REQ-TIM-001 | Clinical timeline: all event types, chronological, filterable, paginated | Tested | patientTimeline service; workflow step 30 |
 | REQ-CHT-001 | Dental chart: adult+pediatric, FDI, conditions, notes, history | Tested | chart service + FDI chart page; tests/chart.test.ts (7); workflow step 14 |
-| REQ-CHT-002 | Configurable condition library incl. spec §27 list | Tested | tooth_conditions seeded (12 conditions incl. spec list); chart.conditions channel |
+| REQ-CHT-002 | Configurable condition library incl. spec §27 list | Tested | tooth_conditions seeded (12 conditions incl. spec list); chart.conditions channel. **Defect found by packaged E2E (run 36722132504) and fixed**: toothConditions leaked snake_case rows so `isActive` was undefined and the chart UI hid every condition — now mapped to the ToothCondition contract with a chart regression test |
 | REQ-TRT-001 | Treatment catalog: code, name, category, default price, active; price snapshots | Tested | treatments table; visit lines + invoice datalist; workflow steps 13/16 |
-| REQ-RX-001 | Prescription creation linked to patient/visit/dentist/date | Tested | prescriptions service; workflow step 15 |
+| REQ-RX-001 | Prescription creation linked to patient/visit/dentist/date | Tested | prescriptions service; workflow step 15. **UI defect found by packaged E2E and fixed**: the RxForm patient search rendered no result list, so a patient could never be selected from the Prescriptions page — results now render like the queue/visits/appointments pickers |
 | REQ-RX-002 | Rx content: clinic header, dentist credentials, patient block, C/C + O/E options, advice | Tested | clinical_options seeded; RxForm; workflow step 15 |
 | REQ-RX-003 | Multi-medicine builder: spec §33 fields, add/remove | Tested | RxForm medicine rows (morning/noon/night/meal/duration/PRN/instruction); workflow step 15 (scheduled + SOS) |
 | REQ-RX-004 | Rx print: premium layout, signature space, footer message, doctor timing | Tested | tests/print-templates.test.ts (signature ≥22 mm clear space, footer message, timing); geometry suite CI run pending |
@@ -103,7 +103,7 @@ Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Pass
 
 | ID | Requirement | Status | Evidence |
 |---|---|---|---|
-| REQ-INV-001 | Invoices: identity, numbering, lines, discount, totals, status | Tested | invoices service; workflow steps 16–20 |
+| REQ-INV-001 | Invoices: identity, numbering, lines, discount, totals, status | Tested | invoices service; workflow steps 16–20. **UI defect found by packaged E2E and fixed**: the InvoiceForm patient search rendered no result list (same class as RxForm) — fixed |
 | REQ-INV-002 | Invoice printing: paper profiles, PDF, Bengali, no signature by default | Tested | tests/print-templates.test.ts (no signature block, footer note); real-PDF geometry suite CI run pending |
 | REQ-INV-003 | Historical documents retain original amounts | Tested | price snapshots (workflow steps 13/16) |
 | REQ-PAY-001 | Payments: methods (cash/bank/card/bkash/nagad/rocket/upay/other), invalid amounts rejected | Tested | payments service; workflow step 18 rejects overpayment |
@@ -180,7 +180,7 @@ Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Pass
 | REQ-ENG-002 | Dependency audit: package, version, license, purpose | Tested | docs/DEPENDENCY_LICENSE_AUDIT.md incl. extract-zip HIGH advisory assessment + mitigation (R-16); 104 production packages all permissive |
 | REQ-ENG-003 | Third-party notices shipped in-app | In Progress | OFL notice ships in resources/fonts; in-app notices screen not present (About tab references licenses) |
 | REQ-ENG-004 | Dead-code scan (TODO/FIXME/placeholder/fake/debug) clean | Tested | Scans clean this revision (src/, tests/); eslint no-unused-vars; asar audit blocks source leakage |
-| REQ-ENG-005 | Unit + integration + E2E; 50-step workflow; RBAC/financial/backup/print matrices | Tested | 151 vitest tests incl. 42-step sequential workflow (spec target 50 — gap documented), RBAC/financial/backup/print-template suites; e2e smoke + geometry + packaged full-flow E2E in CI |
+| REQ-ENG-005 | Unit + integration + E2E; 50-step workflow; RBAC/financial/backup/print matrices | Tested | 152 vitest tests incl. 42-step sequential workflow (spec target 50 — gap documented), RBAC/financial/backup/print-template suites; e2e smoke + geometry + packaged full-flow E2E in CI |
 | REQ-ENG-006 | Stress testing w/ measured results | Tested | tests/stress.test.ts; measurements in TEST_PLAN.md §8 (10k patients/20k visits/15k invoices) |
 | REQ-ENG-007 | GitHub Actions: install, lint, typecheck, tests, build, Windows build, installer, artifacts | Tested | 4-job workflow; verify+e2e green (36696431273, 36696796492); windows-installer green (36719098611); packaged-E2E + geometry re-run pending after patientList/print fixes |
 | REQ-ENG-008 | Production NSIS installer (name, publisher, version, icon, shortcuts, uninstaller, clean uninstall) | Passed | windows-installer job GREEN on run 36719098611 (commit 236e84c): real `Dentiva Pro Setup 1.0.0.exe` built, PE metadata + SHA-256 verified, silent install, Start-Menu shortcut, uninstall registry key (`Dentiva Pro 1.0.0`, publisher, DisplayVersion), app files, launch, clean uninstall with no remnants |
@@ -194,7 +194,7 @@ Status: `Not Started` → `In Progress` → `Implemented` → `Tested` → `Pass
 
 ## Summary
 
-- **Tested:** 63 requirements (automated evidence: vitest suites — 151 tests / 13 files, all green locally; CI `verify` green on 236e84c).
+- **Tested:** 63 requirements (automated evidence: vitest suites — 152 tests / 13 files, all green locally; CI `verify` green on 236e84c).
 - **Passed (real CI environment):** activation-rejection path + boot + zero-console-errors (CI e2e smoke, runs 36696431273/36696796492); **production NSIS installer end-to-end validation** (run 36719098611: build, metadata, checksum, silent install, shortcut, registry, launch, clean uninstall).
 - **Implemented (verified by code/build, no dedicated automated test):** 20.
 - **In Progress (honest gaps, none silent):** 11 — sidebar grouping labels (SHL-002), app-status chip (SHL-001), Ctrl+S/P shortcuts (SHL-008), accessibility audit (SHL-009), dark theme styling (SHL-012), condensed setup wizard (SET-001), tabbed profile views (PAT-006), print preview modal (PRN-002), printer-profile editor UI (SETN-001), notices screen (ENG-003), 42-vs-50-step workflow (ENG-005).

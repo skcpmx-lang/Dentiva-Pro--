@@ -57,12 +57,14 @@ async function main() {
   if (!existsSync(String(electronBin))) die(`electron binary not found at ${electronBin}`)
 
   // 3. Run inside Electron. --no-sandbox: CI containers cannot use the SUID
-  //    chrome-sandbox helper; --disable-gpu: the print compositor's bitmap
-  //    readback fails under xvfb/software-GL otherwise ("CompositePages: Page
-  //    reading failed"). This is the test-runner binary only — the shipped
-  //    app keeps its sandbox and default acceleration.
+  //    chrome-sandbox helper. --disable-dev-shm-usage: Chromium's print
+  //    compositor stages the printed document in shared memory; when /dev/shm
+  //    is constrained this fails ("Printing failed") — this flag sends that
+  //    memory to the temp dir instead (same fix translationCore applied for
+  //    Linux print failures). This is the test-runner binary only — the
+  //    shipped app keeps its sandbox and default settings.
   console.log('→ running print geometry suite inside Electron…\n')
-  const run = spawnSync(String(electronBin), ['--no-sandbox', '--disable-gpu', join(root, 'e2e', 'print-geometry-main.cjs')], {
+  const run = spawnSync(String(electronBin), ['--no-sandbox', '--disable-dev-shm-usage', join(root, 'e2e', 'print-geometry-main.cjs')], {
     cwd: root,
     stdio: ['ignore', 'inherit', 'inherit'],
     env: {

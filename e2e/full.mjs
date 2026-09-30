@@ -213,7 +213,8 @@ async function main() {
   await step('visits: record a visit with a treatment line', async () => {
     await page.getByRole('button', { name: 'New visit' }).click()
     // patient is preselected from the profile — no patient search input is shown
-    await page.locator('input[placeholder="Treatment name"]').first().waitFor()
+    await page.getByRole('button', { name: 'Add treatment' }).click()
+    await page.locator('input[placeholder="Treatment name"]').first().fill('Scaling & polishing')
     await page.locator('input[title="Unit price in ৳"]').first().fill('1500')
     await page.getByRole('button', { name: /Save visit/ }).click()
     await page.waitForSelector('.modal-head', { state: 'detached', timeout: 15_000 })

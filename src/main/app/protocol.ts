@@ -1,6 +1,6 @@
-import { createReadStream, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
-import { protocol, net } from 'electron'
+import { protocol } from 'electron'
 import type { AppContext } from '../core/context'
 
 /**
@@ -44,8 +44,13 @@ export function registerSafeProtocol(ctx: AppContext, fontsDir: string): void {
       const stat = statSync(target)
       if (!stat.isFile()) return new Response('Not found', { status: 404 })
       const mime = mimeFor(target)
-      const stream = createReadStream(target)
-      const response = new Response(stream as unknown as ReadableStream, {
+      // Buffer body (not a Node stream): protocol.handle only documents
+      // string/Buffer/WHATWG-ReadableStream bodies, and a Node fs stream cast
+      // to ReadableStream is undefined behavior — observed as intermittent
+      // ERR_FAILED loads and broken subresource (font) fetches on Linux.
+      // Largest served file is a 25 MB attachment, so buffering is safe.
+      const body = readFileSync(target)
+      const response = new Response(body, {
         headers: { 'Content-Type': mime, 'Access-Control-Allow-Origin': '*' }
       })
       return response
@@ -53,7 +58,6 @@ export function registerSafeProtocol(ctx: AppContext, fontsDir: string): void {
       return new Response('Not found', { status: 404 })
     }
   })
-  void net
 }
 
 function mimeFor(p: string): string {
