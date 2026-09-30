@@ -22,7 +22,7 @@ const invoiceSchema = z.object({
   visitId: z.number().int().positive().nullable().optional(),
   dentistId: z.number().int().positive().nullable().optional(),
   invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  discount: z.number().int().min(0),
+  discount: z.number().int().min(0).default(0),
   notes: z.string().max(1000).nullable().optional(),
   lines: z.array(lineSchema).min(1, 'Add at least one line item.').max(100)
 })
@@ -84,20 +84,20 @@ export function invoiceList(ctx: AppContext, query: InvoiceListQuery): Paginated
   const range = resolveRange(query.preset ?? '30d', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.patientId) { where.push('i.patient_id = $patient'); params.$patient = query.patientId }
-  if (query.status) { where.push('i.status = $status'); params.$status = query.status }
-  if (query.preset !== 'all') { where.push('i.invoice_date >= $from AND i.invoice_date <= $to'); params.$from = range.from; params.$to = range.to }
+  if (query.patientId) { where.push('i.patient_id = $patient'); params.patient = query.patientId }
+  if (query.status) { where.push('i.status = $status'); params.status = query.status }
+  if (query.preset !== 'all') { where.push('i.invoice_date >= $from AND i.invoice_date <= $to'); params.from = range.from; params.to = range.to }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(i.invoice_no LIKE $q ESCAPE "\\" OR p.full_name LIKE $q ESCAPE "\\" OR p.patient_code LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(i.invoice_no LIKE $q ESCAPE \'\\\' OR p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(
     `SELECT COUNT(*) AS c FROM invoices i JOIN patients p ON p.id = i.patient_id ${whereSql}`
   ).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`${SELECT} ${whereSql} ORDER BY i.created_at DESC LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   const getLines = ctx.db.prepare('SELECT * FROM invoice_lines WHERE invoice_id = ? ORDER BY id')
   return {
     rows: rows.map((r) => {
@@ -143,7 +143,7 @@ export function invoiceCreate(ctx: AppContext, actor: Actor, input: InvoiceInput
     const r = ctx.db.prepare(`
       INSERT INTO invoices (invoice_no, patient_id, visit_id, dentist_id, invoice_date, subtotal, discount, total,
         paid_amount, due_amount, status, notes, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'unpaid', ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'unpaid', ?, ?, ?, ?)
     `).run(invoiceNo, d.patientId, d.visitId ?? null, d.dentistId ?? null, d.invoiceDate, subtotal, d.discount, total, total, d.notes ?? null, actor.userId, ts, ts)
     const id = Number(r.lastInsertRowid)
     const ins = ctx.db.prepare(

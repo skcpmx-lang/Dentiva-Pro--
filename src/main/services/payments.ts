@@ -48,12 +48,12 @@ export function paymentList(ctx: AppContext, query: { preset?: string; from?: st
   const range = resolveRange((query.preset ?? 'today') as 'today', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = ["pay.status = 'valid'"]
   const params: Record<string, unknown> = {}
-  if (query.preset !== 'all') { where.push('pay.payment_date >= $from AND pay.payment_date <= $to'); params.$from = range.from; params.$to = range.to }
-  if (query.method) { where.push('pay.method = $method'); params.$method = query.method }
+  if (query.preset !== 'all') { where.push('pay.payment_date >= $from AND pay.payment_date <= $to'); params.from = range.from; params.to = range.to }
+  if (query.method) { where.push('pay.method = $method'); params.method = query.method }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(p.full_name LIKE $q ESCAPE "\\" OR p.patient_code LIKE $q ESCAPE "\\" OR pay.reference LIKE $q ESCAPE "\\" OR i.invoice_no LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\' OR pay.reference LIKE $q ESCAPE \'\\\' OR i.invoice_no LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = `WHERE ${where.join(' AND ')}`
   const total = (ctx.db.prepare(
@@ -61,7 +61,7 @@ export function paymentList(ctx: AppContext, query: { preset?: string; from?: st
   ).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`
     ${SELECT} ${whereSql} ORDER BY pay.payment_date DESC, pay.id DESC LIMIT $limit OFFSET $offset
-  `).all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map(mapRow), total, page, pageSize }
 }
 
@@ -170,8 +170,8 @@ export function paymentSummary(ctx: AppContext, query: RangeQuery): PaymentSumma
   let dateFilter = ''
   if (query.preset !== 'all') {
     dateFilter = 'AND payment_date >= $from AND payment_date <= $to'
-    params.$from = range.from
-    params.$to = range.to
+    params.from = range.from
+    params.to = range.to
   }
   const byMethodRows = ctx.db.prepare(`
     SELECT method, COALESCE(SUM(amount),0) AS s FROM payments WHERE status = 'valid' ${dateFilter} GROUP BY method
@@ -300,7 +300,7 @@ export function financialDashboard(ctx: AppContext, query: RangeQuery) {
   const summary = paymentSummary(ctx, query)
   const expenses = (ctx.db.prepare(`
     SELECT COALESCE(SUM(amount),0) AS s FROM financial_transactions WHERE kind = 'expense' AND txn_date >= $from AND txn_date <= $to
-  `).get({ $from: range.from ?? '0000-01-01', $to: range.to }) as { s: number }).s
+  `).get({ from: range.from ?? '0000-01-01',to: range.to }) as { s: number }).s
   const revenueToday = (ctx.db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE status = 'valid' AND payment_date = ?"
   ).get(today) as { s: number }).s
@@ -308,7 +308,7 @@ export function financialDashboard(ctx: AppContext, query: RangeQuery) {
   const rows = ctx.db.prepare(`
     SELECT payment_date AS date, COALESCE(SUM(amount),0) AS s FROM payments
     WHERE status = 'valid' AND payment_date >= $from AND payment_date <= $to GROUP BY payment_date ORDER BY payment_date
-  `).all({ $from: range.from ?? '0000-01-01', $to: range.to }) as { date: string; s: number }[]
+  `).all({ from: range.from ?? '0000-01-01',to: range.to }) as { date: string; s: number }[]
   for (const r of rows) byDay.push({ date: r.date, collected: r.s })
   return {
     revenueToday,

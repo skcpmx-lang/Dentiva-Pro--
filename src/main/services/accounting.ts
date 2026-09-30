@@ -35,13 +35,13 @@ export function accountingList(ctx: AppContext, query: RangeQuery & { kind?: str
   const range = resolveRange((query.preset ?? '30d') as '30d', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.preset !== 'all') { where.push('t.txn_date >= $from AND t.txn_date <= $to'); params.$from = range.from; params.$to = range.to }
-  if (query.kind) { where.push('t.kind = $kind'); params.$kind = query.kind }
-  if (query.categoryId) { where.push('t.category_id = $cat'); params.$cat = query.categoryId }
+  if (query.preset !== 'all') { where.push('t.txn_date >= $from AND t.txn_date <= $to'); params.from = range.from; params.to = range.to }
+  if (query.kind) { where.push('t.kind = $kind'); params.kind = query.kind }
+  if (query.categoryId) { where.push('t.category_id = $cat'); params.cat = query.categoryId }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(`SELECT COUNT(*) AS c FROM financial_transactions t ${whereSql}`).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`${SELECT} ${whereSql} ORDER BY t.txn_date DESC, t.id DESC LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map(mapTxn), total, page, pageSize }
 }
 
@@ -146,7 +146,7 @@ export function accountingSaveCategory(ctx: AppContext, actor: Actor, input: Rec
 
 export function accountingSummary(ctx: AppContext, query: RangeQuery): AccountingSummary {
   const range = resolveRange((query.preset ?? '30d') as '30d', { from: query.from, to: query.to }, ctx.clock())
-  const params: Record<string, unknown> = { $from: range.from ?? '0000-01-01', $to: range.to }
+  const params: Record<string, unknown> = { from: range.from ?? '0000-01-01',to: range.to }
   const income = (ctx.db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS s FROM financial_transactions WHERE kind = 'income' AND txn_date >= $from AND txn_date <= $to"
   ).get(params) as { s: number }).s

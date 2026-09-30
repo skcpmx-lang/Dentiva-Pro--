@@ -38,18 +38,18 @@ export function appointmentList(ctx: AppContext, query: AppointmentListQuery): P
   const pageSize = Math.min(200, Math.max(5, query.pageSize | 0 || 100))
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.date) { where.push('a.appt_date = $date'); params.$date = query.date }
-  if (query.from) { where.push('a.appt_date >= $from'); params.$from = query.from }
-  if (query.to) { where.push('a.appt_date <= $to'); params.$to = query.to }
-  if (query.dentistId) { where.push('a.dentist_id = $dentist'); params.$dentist = query.dentistId }
-  if (query.patientId) { where.push('a.patient_id = $patient'); params.$patient = query.patientId }
-  if (query.status) { where.push('a.status = $status'); params.$status = query.status }
+  if (query.date) { where.push('a.appt_date = $date'); params.date = query.date }
+  if (query.from) { where.push('a.appt_date >= $from'); params.from = query.from }
+  if (query.to) { where.push('a.appt_date <= $to'); params.to = query.to }
+  if (query.dentistId) { where.push('a.dentist_id = $dentist'); params.dentist = query.dentistId }
+  if (query.patientId) { where.push('a.patient_id = $patient'); params.patient = query.patientId }
+  if (query.status) { where.push('a.status = $status'); params.status = query.status }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(
     `SELECT COUNT(*) AS c FROM appointments a JOIN patients p ON p.id = a.patient_id ${whereSql}`
   ).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`${SELECT} ${whereSql} ORDER BY a.appt_date DESC, a.appt_time DESC LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map(mapRow), total, page, pageSize }
 }
 

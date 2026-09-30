@@ -98,13 +98,13 @@ export function inventoryItems(ctx: AppContext, opts: { search?: string; activeO
   if (opts.activeOnly) where.push('is_active = 1')
   if (opts.search) {
     const s = opts.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(name LIKE $q ESCAPE "\\" OR sku LIKE $q ESCAPE "\\" OR category LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(name LIKE $q ESCAPE \'\\\' OR sku LIKE $q ESCAPE \'\\\' OR category LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(`SELECT COUNT(*) AS c FROM inventory_items ${whereSql}`).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`SELECT * FROM inventory_items ${whereSql} ORDER BY name COLLATE NOCASE LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return {
     rows: rows.map((r) => mapItem(r, currentStock(ctx, r.id as number), r.reorder_threshold as number)),
     total, page, pageSize

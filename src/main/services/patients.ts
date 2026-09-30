@@ -41,13 +41,13 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
   const params: Record<string, unknown> = {}
   if (query.preset !== 'all') {
     where.push('p.registered_at >= $from AND p.registered_at <= $to')
-    params.$from = range.from
-    params.$to = range.to
+    params.from = range.from
+    params.to = range.to
   }
   if (query.search) {
     const s = likeEscape(query.search.trim())
-    where.push('(p.full_name LIKE $q ESCAPE "\\" OR p.patient_code LIKE $q ESCAPE "\\" OR p.phone LIKE $q ESCAPE "\\" OR p.chief_complaint LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\' OR p.phone LIKE $q ESCAPE \'\\\' OR p.chief_complaint LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const status = query.status ?? 'active'
   if (status === 'archived') {
@@ -55,11 +55,11 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
   } else {
     where.push('p.archived_at IS NULL')
     where.push('p.status = $status')
-    params.$status = status
+    params.status = status
   }
   if (query.dentistId) {
     where.push('p.registered_dentist_id = $dentist')
-    params.$dentist = query.dentistId
+    params.dentist = query.dentistId
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
@@ -82,7 +82,7 @@ export function patientList(ctx: AppContext, actor: Actor, query: PatientListQue
     FROM patients p ${whereSql}
     ORDER BY ${orderBy}
     LIMIT $limit OFFSET $offset
-  `).all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as (PatientListRow & { archived_at: string | null })[]
+  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as (PatientListRow & { archived_at: string | null })[]
 
   return {
     rows: rows.map((r) => ({ ...r, archived: r.archived_at != null })),

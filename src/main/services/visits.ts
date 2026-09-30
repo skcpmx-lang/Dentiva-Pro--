@@ -94,13 +94,13 @@ export function visitList(ctx: AppContext, _actor: Actor, query: VisitListQuery)
   const range = resolveRange(query.preset ?? '30d', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.patientId) { where.push('v.patient_id = $patient'); params.$patient = query.patientId }
-  if (query.dentistId) { where.push('v.dentist_id = $dentist'); params.$dentist = query.dentistId }
-  if (query.preset !== 'all') { where.push('v.visit_date >= $from AND v.visit_date <= $to'); params.$from = range.from; params.$to = range.to }
+  if (query.patientId) { where.push('v.patient_id = $patient'); params.patient = query.patientId }
+  if (query.dentistId) { where.push('v.dentist_id = $dentist'); params.dentist = query.dentistId }
+  if (query.preset !== 'all') { where.push('v.visit_date >= $from AND v.visit_date <= $to'); params.from = range.from; params.to = range.to }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(p.full_name LIKE $q ESCAPE "\\" OR p.patient_code LIKE $q ESCAPE "\\" OR v.diagnosis LIKE $q ESCAPE "\\" OR v.chief_complaint LIKE $q ESCAPE "\\" OR v.notes LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\' OR v.diagnosis LIKE $q ESCAPE \'\\\' OR v.chief_complaint LIKE $q ESCAPE \'\\\' OR v.notes LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(
@@ -109,7 +109,7 @@ export function visitList(ctx: AppContext, _actor: Actor, query: VisitListQuery)
   const rows = ctx.db.prepare(`
     SELECT v.id FROM visits v JOIN patients p ON p.id = v.patient_id ${whereSql}
     ORDER BY v.visit_date DESC, v.id DESC LIMIT $limit OFFSET $offset
-  `).all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as { id: number }[]
+  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as { id: number }[]
   return { rows: rows.map((r) => getVisitOrThrow(ctx, r.id)), total, page, pageSize }
 }
 

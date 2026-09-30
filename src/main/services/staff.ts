@@ -39,13 +39,13 @@ export function staffList(ctx: AppContext, opts: { search?: string; page: number
   const params: Record<string, unknown> = {}
   if (opts.search) {
     const s = opts.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(name LIKE $q ESCAPE "\\" OR designation LIKE $q ESCAPE "\\" OR department LIKE $q ESCAPE "\\" OR phone LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(name LIKE $q ESCAPE \'\\\' OR designation LIKE $q ESCAPE \'\\\' OR department LIKE $q ESCAPE \'\\\' OR phone LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(`SELECT COUNT(*) AS c FROM staff ${whereSql}`).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`SELECT * FROM staff ${whereSql} ORDER BY name COLLATE NOCASE LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map(mapStaff), total, page, pageSize }
 }
 

@@ -75,8 +75,8 @@ export function medicineList(ctx: AppContext, opts: { search?: string; activeOnl
   if (opts.activeOnly) where.push('is_active = 1')
   if (opts.search) {
     const s = opts.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(name LIKE $q ESCAPE "\\" OR generic_name LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(name LIKE $q ESCAPE \'\\\' OR generic_name LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const rows = ctx.db.prepare(`SELECT * FROM medicines ${whereSql} ORDER BY name COLLATE NOCASE LIMIT 200`).all(params) as Record<string, unknown>[]
@@ -232,13 +232,13 @@ export function prescriptionList(ctx: AppContext, _actor: Actor, query: VisitLis
   const range = resolveRange(query.preset ?? '30d', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.patientId) { where.push('rx.patient_id = $patient'); params.$patient = query.patientId }
-  if (query.dentistId) { where.push('rx.dentist_id = $dentist'); params.$dentist = query.dentistId }
-  if (query.preset !== 'all') { where.push('rx.rx_date >= $from AND rx.rx_date <= $to'); params.$from = range.from; params.$to = range.to }
+  if (query.patientId) { where.push('rx.patient_id = $patient'); params.patient = query.patientId }
+  if (query.dentistId) { where.push('rx.dentist_id = $dentist'); params.dentist = query.dentistId }
+  if (query.preset !== 'all') { where.push('rx.rx_date >= $from AND rx.rx_date <= $to'); params.from = range.from; params.to = range.to }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(p.full_name LIKE $q ESCAPE "\\" OR p.patient_code LIKE $q ESCAPE "\\" OR rx.rx_no LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR p.patient_code LIKE $q ESCAPE \'\\\' OR rx.rx_no LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(
@@ -247,7 +247,7 @@ export function prescriptionList(ctx: AppContext, _actor: Actor, query: VisitLis
   const rows = ctx.db.prepare(`
     SELECT rx.* FROM prescriptions rx JOIN patients p ON p.id = rx.patient_id ${whereSql}
     ORDER BY rx.created_at DESC LIMIT $limit OFFSET $offset
-  `).all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+  `).all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map((r) => mapPrescription(ctx, r)), total, page, pageSize }
 }
 

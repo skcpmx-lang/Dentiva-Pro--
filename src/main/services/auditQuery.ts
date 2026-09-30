@@ -16,21 +16,21 @@ export function auditList(
   const range = query.preset === 'all' ? null : resolveRange((query.preset || '30d') as '30d', { from: query.from, to: query.to })
   if (range) {
     where.push('created_at >= $fromIso AND created_at <= $toIso')
-    params.$fromIso = `${range.from}T00:00:00.000Z`
-    params.$toIso = `${range.to}T23:59:59.999Z`
+    params.fromIso = `${range.from}T00:00:00.000Z`
+    params.toIso = `${range.to}T23:59:59.999Z`
   }
-  if (query.userId) { where.push('user_id = $user'); params.$user = query.userId }
-  if (query.entity) { where.push('entity = $entity'); params.$entity = query.entity }
-  if (query.action) { where.push('action = $action'); params.$action = query.action }
+  if (query.userId) { where.push('user_id = $user'); params.user = query.userId }
+  if (query.entity) { where.push('entity = $entity'); params.entity = query.entity }
+  if (query.action) { where.push('action = $action'); params.action = query.action }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(username LIKE $q ESCAPE "\\" OR entity LIKE $q ESCAPE "\\" OR context LIKE $q ESCAPE "\\" OR entity_id LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(username LIKE $q ESCAPE \'\\\' OR entity LIKE $q ESCAPE \'\\\' OR context LIKE $q ESCAPE \'\\\' OR entity_id LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (db.prepare(`SELECT COUNT(*) AS c FROM audit_log ${whereSql}`).get(params) as { c: number }).c
   const rows = db.prepare(`SELECT * FROM audit_log ${whereSql} ORDER BY created_at DESC, id DESC LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return {
     rows: rows.map((r) => ({
       id: r.id as number,

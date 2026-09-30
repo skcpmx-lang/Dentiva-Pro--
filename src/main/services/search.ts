@@ -19,7 +19,7 @@ export function globalSearch(ctx: AppContext, actor: Actor, q: string, moduleFil
   if (term.length < 1) return []
   const pattern = like(term)
   const groups: SearchResultGroup[] = []
-  const params = { $q: pattern }
+  const params = { q: pattern }
   const lim = Math.min(25, Math.max(1, limit))
 
   if ((!moduleFilter || moduleFilter === 'patients') && actorCan(actor, 'patient.view')) {

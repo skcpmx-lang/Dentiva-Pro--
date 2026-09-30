@@ -49,17 +49,17 @@ export function referralList(ctx: AppContext, query: VisitListQuery): Paginated<
   const range = resolveRange(query.preset ?? '30d', { from: query.from, to: query.to }, ctx.clock())
   const where: string[] = []
   const params: Record<string, unknown> = {}
-  if (query.patientId) { where.push('rf.patient_id = $patient'); params.$patient = query.patientId }
-  if (query.preset !== 'all') { where.push('rf.created_at >= $fromIso AND rf.created_at <= $toIso'); params.$fromIso = `${range.from}T00:00:00.000Z`; params.$toIso = `${range.to}T23:59:59.999Z` }
+  if (query.patientId) { where.push('rf.patient_id = $patient'); params.patient = query.patientId }
+  if (query.preset !== 'all') { where.push('rf.created_at >= $fromIso AND rf.created_at <= $toIso'); params.fromIso = `${range.from}T00:00:00.000Z`; params.toIso = `${range.to}T23:59:59.999Z` }
   if (query.search) {
     const s = query.search.replace(/[\\%_]/g, (c) => `\\${c}`)
-    where.push('(p.full_name LIKE $q ESCAPE "\\" OR rf.to_doctor_name LIKE $q ESCAPE "\\" OR rf.to_clinic LIKE $q ESCAPE "\\")')
-    params.$q = `%${s}%`
+    where.push('(p.full_name LIKE $q ESCAPE \'\\\' OR rf.to_doctor_name LIKE $q ESCAPE \'\\\' OR rf.to_clinic LIKE $q ESCAPE \'\\\')')
+    params.q = `%${s}%`
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const total = (ctx.db.prepare(`SELECT COUNT(*) AS c FROM referrals rf JOIN patients p ON p.id = rf.patient_id ${whereSql}`).get(params) as { c: number }).c
   const rows = ctx.db.prepare(`${SELECT} ${whereSql} ORDER BY rf.created_at DESC LIMIT $limit OFFSET $offset`)
-    .all({ ...params, $limit: pageSize, $offset: (page - 1) * pageSize }) as Record<string, unknown>[]
+    .all({ ...params,limit: pageSize,offset: (page - 1) * pageSize }) as Record<string, unknown>[]
   return { rows: rows.map(mapReferral), total, page, pageSize }
 }
 
