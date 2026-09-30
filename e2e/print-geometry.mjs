@@ -56,24 +56,33 @@ async function main() {
   }
   if (!existsSync(String(electronBin))) die(`electron binary not found at ${electronBin}`)
 
-  // 2a. Print documents use SYSTEM fonts (Chromium 152's print compositor
-  //     cannot print webfont-sourced pages — see print.ts). Install the
-  //     bundled Noto Sans Bengali TTFs as system fonts on Linux so the
-  //     geometry suite exercises the same strategy a Windows machine gets
-  //     via its bundled Nirmala UI.
+  // 2a. The print pipeline embeds its fonts as data-URL webfonts, but the
+  //     geometry probes also test SYSTEM-font resolution on this runner —
+  //     install the bundled Noto Sans Bengali TTFs as system fonts (user dir
+  //     + system dir when passwordless sudo is available) and report what
+  //     fontconfig actually sees.
   if (process.platform === 'linux') {
     const home = process.env.HOME ?? ''
-    if (home) {
-      try {
+    try {
+      if (home) {
         mkdirSync(join(home, '.fonts'), { recursive: true })
         for (const f of readdirSync(fontsDir)) {
           if (f.endsWith('.ttf')) copyFileSync(join(fontsDir, f), join(home, '.fonts', f))
         }
-        spawnSync('fc-cache', ['-f'], { stdio: 'ignore' })
-        console.log('→ installed bundled Noto Sans Bengali TTFs as system fonts (fc-cache)')
-      } catch (e) {
-        console.error(`  ⚠ font install for system-font print strategy failed: ${e instanceof Error ? e.message : String(e)}`)
       }
+      const sudoOk = spawnSync('sudo', ['-n', 'true']).status === 0
+      if (sudoOk) {
+        spawnSync('sudo', ['mkdir', '-p', '/usr/local/share/fonts/noto-bengali'], { stdio: 'ignore' })
+        for (const f of readdirSync(fontsDir)) {
+          if (f.endsWith('.ttf')) spawnSync('sudo', ['cp', join(fontsDir, f), `/usr/local/share/fonts/noto-bengali/${f}`], { stdio: 'ignore' })
+        }
+      }
+      spawnSync('fc-cache', ['-f'], { stdio: 'ignore' })
+      const list = spawnSync('fc-list', [':lang=bn', 'family'])
+      const families = list.status === 0 ? String(list.stdout).trim().split('\n').filter(Boolean) : []
+      console.log(`→ system Bengali fonts visible to fontconfig: ${families.length ? families.join(' | ') : '(none — probes will report tofu resolution)'}`)
+    } catch (e) {
+      console.error(`  ⚠ font install for system-font probes failed: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 

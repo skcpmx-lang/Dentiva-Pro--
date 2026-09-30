@@ -347,12 +347,17 @@ async function main() {
     const row = page.locator('.tbl tbody tr', { hasText: 'INV-' }).first()
     await row.locator('button').first().click() // printer icon button
     let pdf = null
+    let toastText = ''
     for (let i = 0; i < 30; i++) {
       await page.waitForTimeout(1000)
       const now = readdirSafe(tempDir).filter((f) => f.endsWith('.pdf') && !before.has(f))
       if (now.length > 0) { pdf = join(tempDir, now[0]); break }
+      // capture any error toast so the failure carries the renderer/main
+      // error signature (printToPDF rejection message) instead of a timeout
+      const t = await page.locator('.toast, .toast-error, [class*="toast" i]').allTextContents().catch(() => [])
+      if (t.length > 0) toastText = t.join(' | ').slice(0, 300)
     }
-    if (!pdf) throw new Error('no new PDF appeared in the app temp dir after clicking Print')
+    if (!pdf) throw new Error(`no new PDF appeared in the app temp dir after clicking Print${toastText ? ` — app error: ${toastText}` : ''}`)
     const bytes = readFileSync(pdf)
     if (bytes.length < 1000) throw new Error(`PDF too small (${bytes.length} bytes)`)
     const latin = bytes.toString('latin1')

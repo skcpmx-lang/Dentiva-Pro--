@@ -137,7 +137,7 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
   // harness independent of a database while using the real print pipeline.
   const ctx = { paths } as unknown as AppContext
   registerSafeProtocol(ctx, opts.fontsDir)
-  const pm = new PrintManager(ctx)
+  const pm = new PrintManager(ctx, opts.fontsDir)
 
   const render = async (doc: PrintDoc): Promise<{ pdfUrl: string; pages: number; bytes: Buffer }> => {
     const r = await pm.renderPdf(doc.html, { html: doc.html, paper: doc.paper, widthMm: doc.widthMm ?? null, heightMm: doc.heightMm ?? null, marginMm: doc.marginMm, scale: doc.scale })
@@ -160,30 +160,89 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
   }
 
   /* ---------------- differential diagnostics (run first) ---------------- */
-  // A CI failure mode ("CompositePages: Page reading failed" → printToPDF
-  // rejects) must be attributable to the environment vs the content. The
-  // minimal case uses no webfonts; the font-diagnostics case loads one
-  // bundled font over dentiva-safe:// and reports fetch/load status, then
-  // prints the same page.
+  // CI print failures ("CompositePages: Page reading failed" → printToPDF
+  // rejects) are attributed page-by-page with these probes. They are
+  // INFORMATIONAL (recordInfo) — the real cases below gate the suite — so a
+  // red run pinpoints WHICH property of a page breaks the print compositor
+  // (Electron 44 / Chromium 152). Run history: dentiva-safe:// webfonts never
+  // print (WOFF2 or TTF); system-font-only Bengali pages failed too
+  // (36727894316); the only Bengali page that ever printed used a data-URL
+  // webfont. The probes keep the remaining hypotheses testable.
+  const printOptsA4 = (preferCss: boolean) => ({
+    printBackground: true,
+    preferCSSPageSize: preferCss,
+    pageSize: { width: 210000, height: 297000 },
+    margins: { top: 0, bottom: 0, left: 0, right: 0 }
+  })
+  const probePrint = async (name: string, html: string, opts: { settleMs?: number; preferCss?: boolean } = {}): Promise<void> => {
+    let win: BrowserWindow | null = null
+    try {
+      win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+      const id = randomUUID()
+      writeFileSync(join(paths.tempDir, `${id}-probe.html`), html, 'utf8')
+      await win.loadURL(`dentiva-safe://temp/${id}-probe.html`)
+      await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true)
+      if (opts.settleMs) await new Promise((r) => setTimeout(r, opts.settleMs))
+      const pdf = await win.webContents.printToPDF(printOptsA4(opts.preferCss !== false))
+      recordInfo(name, true, `pdf=${pdf.length} bytes`)
+    } catch (e) {
+      recordInfo(name, false, e instanceof Error ? e.message : String(e))
+    } finally {
+      win?.destroy()
+    }
+  }
+  const stackCss = "html, body { font-family: 'Noto Sans Bengali', 'Nirmala UI', 'Inter', system-ui, sans-serif; }"
+  const minimalHtml = (extraCss: string, body: string) =>
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page { size: A4; margin: 0 }${extraCss}</style></head><body>${body}</body></html>`
+  const diagTtf = readFileSync(join(opts.fontsDir, 'noto-sans-bengali-bengali-400-normal.ttf')).toString('base64')
+
+  // Control — the known-passing minimal page (gating).
   await assertGeometry('minimal Latin page prints (no webfonts)', {
     html: '<!DOCTYPE html><html><head><style>@page { size: A4; margin: 0 }</style></head><body><h1>Minimal print test</h1><p>Plain Latin content, default fonts only.</p></body></html>',
     paper: 'a4', marginMm: 0
   }, { width: 210, height: 297 })
 
+  // P1 — which fonts does the runner actually resolve? Canvas widths expose
+  // a tofu fallback (unknown-font name measures the same as no coverage).
+  try {
+    const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+    try {
+      const id = randomUUID()
+      writeFileSync(join(paths.tempDir, `${id}-fontresolve.html`), `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>window.__r = (() => { const c = document.createElement('canvas').getContext('2d'); const m = (f, t) => { c.font = '32px ' + f; return Math.round(c.measureText(t).width * 10) / 10 }; return { notoBnBengali: m("'Noto Sans Bengali'", 'বাংলা'), notoBnLatin: m("'Noto Sans Bengali'", 'Abc9'), nirmalaBengali: m("'Nirmala UI'", 'বাংলা'), genericSansBengali: m('sans-serif', 'বাংলা'), bogusBengali: m("'NoSuchFontXYZ123'", 'বাংলা'), bogusLatin: m("'NoSuchFontXYZ123'", 'Abc9') } })()<\/script></body></html>`, 'utf8')
+      await win.loadURL(`dentiva-safe://temp/${id}-fontresolve.html`)
+      const r = (await win.webContents.executeJavaScript('window.__r')) as Record<string, number>
+      recordInfo('font resolution report (canvas widths)', true, JSON.stringify(r))
+    } finally {
+      win.destroy()
+    }
+  } catch (e) {
+    recordInfo('font resolution report (canvas widths)', false, e instanceof Error ? e.message : String(e))
+  }
+
+  // P2 — the known-passing minimal page + ONE Bengali run (default fonts).
+  await probePrint('P2: minimal + Bengali text, default fonts', minimalHtml('', '<h1>Minimal print test</h1><p>Plain Latin content, default fonts only. বাংলা পরীক্ষা</p>'))
+  // P3 — minimal page + the production font stack, Latin only.
+  await probePrint('P3: minimal + font stack, Latin only', minimalHtml(stackCss, '<h1>Minimal print test</h1><p>Plain Latin content only.</p>'))
+  // P4 — system-font stack + Bengali-only paragraph (the strategy that failed).
+  await probePrint('P4: font stack + Bengali-only paragraph', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`)
+  // P4b — same, but the paragraph also contains a Latin word.
+  await probePrint('P4b: font stack + Bengali paragraph with Latin word', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা system</p></body></html>`)
+  // P9 — P4 with an 800ms settle before printing (renderer-race hypothesis).
+  await probePrint('P9: font stack + Bengali, 800ms settle', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, { settleMs: 800 })
+  // P6 — P4 without preferCSSPageSize (print-option hypothesis).
+  await probePrint('P6: font stack + Bengali, no preferCSSPageSize', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, { preferCss: false })
+  // P5 — Bengali via a data-URL webfont only (the delivery that printed).
+  await probePrint('P5: Bengali via data-URL webfont only', `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@font-face { font-family: 'DiagWebFont'; src: url(data:font/ttf;base64,${diagTtf}) format('truetype'); } p { font-family: 'DiagWebFont'; }</style></head><body><p>বাংলা পরীক্ষা webfont</p></body></html>`, { settleMs: 300 })
+
+  // P11 — exact repro of the mixed page that printed in run 36727894316
+  // (data-URL webfont paragraph + system-font paragraph + protocol fetch).
   try {
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
     try {
       const id = randomUUID()
       const htmlPath = join(paths.tempDir, `${id}-fontdiag.html`)
-      // System-font print check (the pipeline's strategy): no @font-face — the
-      // runner installs the bundled Noto Sans Bengali TTF as a system font
-      // (see print-geometry.mjs); on Windows the app relies on Nirmala UI.
-      // Informational experiment: also print a page using an inline data-URL
-      // webfont, to record whether webfont printing breaks regardless of how
-      // the font bytes are delivered.
-      const ttf = readFileSync(join(opts.fontsDir, 'noto-sans-bengali-bengali-400-normal.ttf')).toString('base64')
       writeFileSync(htmlPath, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        @font-face { font-family: 'DiagWebFont'; src: url(data:font/ttf;base64,${ttf}) format('truetype'); }
+        @font-face { font-family: 'DiagWebFont'; src: url(data:font/ttf;base64,${diagTtf}) format('truetype'); }
         .webfont { font-family: 'DiagWebFont'; }
         .sysfont { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }
       </style></head><body><p class="webfont" id="w">বাংলা পরীক্ষা webfont</p><p class="sysfont" id="s">বাংলা পরীক্ষা system</p><script>
@@ -197,35 +256,43 @@ export async function runPrintGeometryTests(opts: { dataDir: string; fontsDir: s
       const fetchOk = diag.fetchStatus === 200
       record('font diagnostics: dentiva-safe:// font fetch', fetchOk, JSON.stringify(diag))
       try {
-        const pdfAll = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
-        recordInfo('webfont + system-font mixed page prints (data-URL webfont)', true, `pdf=${pdfAll.length} bytes`)
+        const pdfAll = await win.webContents.printToPDF(printOptsA4(true))
+        recordInfo('P11: mixed webfont+system page (36727894316 repro)', true, `pdf=${pdfAll.length} bytes`)
       } catch (e) {
-        recordInfo('webfont + system-font mixed page prints (data-URL webfont)', false, e instanceof Error ? e.message : String(e))
-      }
-      // Informational (does not gate): does printing still fail when the page
-      // uses ONLY system fonts? This mirrors the production print strategy.
-      try {
-        const win2 = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
-        try {
-          const id2 = randomUUID()
-          const p2 = join(paths.tempDir, `${id2}-sysfont.html`)
-          writeFileSync(p2, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Noto Sans Bengali', 'Nirmala UI', sans-serif; }</style></head><body><p>বাংলা সিস্টেম ফন্ট পরীক্ষা</p></body></html>`, 'utf8')
-          await win2.loadURL(`dentiva-safe://temp/${id2}-sysfont.html`)
-          await win2.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true)
-          const pdf = await win2.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, pageSize: { width: 210000, height: 297000 }, margins: { top: 0, bottom: 0, left: 0, right: 0 } })
-          const embedded = /NotoSansBengali|NirmalaUI/i.test(pdf.toString('latin1'))
-          record('font diagnostics: system-font-only page prints (production strategy)', pdf.length > 1000 && embedded, `pdf=${pdf.length} bytes, bengaliFontEmbedded=${embedded}`)
-        } finally {
-          win2.destroy()
-        }
-      } catch (e) {
-        record('font diagnostics: system-font-only page prints (production strategy)', false, e instanceof Error ? e.message : String(e))
+        recordInfo('P11: mixed webfont+system page (36727894316 repro)', false, e instanceof Error ? e.message : String(e))
       }
     } finally {
       win.destroy()
     }
   } catch (e) {
     record('font diagnostics', false, e instanceof Error ? e.message : String(e))
+  }
+
+  // P10 — a real failing template (Bengali rx) via a manual window WITHOUT
+  // data-URL fonts (system stack only) + 800ms settle: isolates content from
+  // the renderPdf timing and from embedded fonts.
+  {
+    const rxHtml = renderPrescription(rxData()).html.replace(/<head([^>]*)>/i, (m) => `${m}<meta charset="utf-8"><style>${stackCss}</style>`)
+    await probePrint('P10: real rx template, system stack, 800ms settle', rxHtml, { settleMs: 800 })
+  }
+
+  // P7 — the real pipeline (renderPdf, now with data-URL embedded fonts) on
+  // an all-Latin prescription: if this prints, Bengali text is the trigger;
+  // if not, the template content itself is.
+  try {
+    const latinRx = rxData({
+      patientName: 'Abdul Karim',
+      dentistName: 'Dr. Rahim Khan',
+      cc: ['Toothache'],
+      oe: ['Caries 36'],
+      advice: 'Brush twice daily and take the prescribed medicine after meals.',
+      clinic: { ...clinic, name: 'Smile Dental Care', address: '12 Green Road, Dhaka' }
+    })
+    const doc = renderPrescription(latinRx)
+    const r = await pm.renderPdf(doc.html, { html: doc.html, paper: doc.paper, widthMm: doc.widthMm ?? null, heightMm: doc.heightMm ?? null, marginMm: doc.marginMm, scale: doc.scale })
+    recordInfo('P7: all-Latin rx via real pipeline (renderPdf)', r.pages >= 1, `pages=${r.pages}`)
+  } catch (e) {
+    recordInfo('P7: all-Latin rx via real pipeline (renderPdf)', false, e instanceof Error ? e.message : String(e))
   }
 
   /* ---------------- paper geometry (MediaBox in points) ---------------- */

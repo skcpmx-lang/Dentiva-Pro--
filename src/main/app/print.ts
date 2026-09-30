@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import type { AppContext } from '../core/context'
 import { errIo, errValidation } from '@shared/errors'
 import { AppError } from '@shared/errors'
@@ -25,17 +25,28 @@ interface PrintJob {
  * single valid document instead of nesting a full document inside <body>.
  * Bare HTML fragments are wrapped in a minimal document.
  *
- * IMPORTANT — print documents deliberately use SYSTEM fonts, not @font-face
- * webfonts: Electron 44 (Chromium 152) fails to print any page whose glyphs
- * come from a webfont — the print compositor rejects the serialized page
- * ("print_compositor_impl.cc: CompositePages: Page reading failed",
- * printToPDF rejects with "Printing failed"). Reproduced on the packaged
- * Windows app (invoice print produced no PDF) and on Linux CI, with both
- * WOFF2 and TTF sources; pages using system fonts print fine (differential
- * cases in e2e/print-geometry-entry.ts). Windows ships Nirmala UI (full
- * Bengali support, Win 8.1+); the CI geometry runner installs the bundled
- * Noto Sans Bengali TTF. The app UI keeps the bundled WOFF2 webfonts — the
- * defect is specific to the print pipeline.
+ * IMPORTANT — print documents embed their fonts as base64 DATA-URL
+ * @font-face rules; they must NOT reference fonts over the custom
+ * dentiva-safe:// protocol, and they can not rely on system fonts for
+ * Bengali. CI differential evidence (runs 36722132504 / 36723879956 /
+ * 36726128680 / 36727894316):
+ *
+ *  - pages whose webfonts are served over dentiva-safe:// NEVER print
+ *    (print compositor: "CompositePages: Page reading failed", printToPDF
+ *    rejects with "Printing failed") — WOFF2 and TTF alike;
+ *  - the system-font strategy (no @font-face at all) ALSO failed for every
+ *    real Bengali document, on Linux CI AND in the packaged Windows app;
+ *  - the ONLY Bengali document that ever printed on this stack (Electron 44 /
+ *    Chromium 152) was a page whose webfont was inlined as a data: URL
+ *    (run 36727894316, "mixed page" diagnostic).
+ *
+ * A data: URL is self-contained: the print compositor needs no secondary
+ * resource fetch (the dentiva-safe:// scheme is registered for the app's
+ * network context, but the compositor's serialization path cannot re-fetch
+ * through it). The bundled Noto Sans Bengali TTFs are therefore inlined
+ * base64. The e2e/print-geometry-entry.ts diagnostics keep probing the
+ * remaining attribution questions (system-font resolution, settle-time
+ * races, option matrix) as informational, non-gating cases.
  */
 function injectPrintFonts(html: string, fontCss: string): string {
   const inject = `<meta charset="utf-8"><style>${fontCss}</style>`
@@ -43,6 +54,10 @@ function injectPrintFonts(html: string, fontCss: string): string {
   if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => m + `<head>${inject}</head>`)
   return `<!DOCTYPE html><html><head>${inject}</head><body>${html}</body></html>`
 }
+
+/** Google-subset unicode ranges for the bundled Noto Sans Bengali builds. */
+const BENGALI_RANGE = 'U+0964-0965, U+0980-09FE, U+20B9'
+const LATIN_RANGE = 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'
 
 /**
  * Print pipeline (docs/PRINT_SPECIFICATION.md):
@@ -52,8 +67,36 @@ function injectPrintFonts(html: string, fontCss: string): string {
  */
 export class PrintManager {
   private jobs = new Map<string, PrintJob>()
+  private fontFaceCss: string | null = null
 
-  constructor(private ctx: AppContext) {}
+  constructor(private ctx: AppContext, private fontsDir?: string) {}
+
+  /**
+   * @font-face rules inlining the bundled Noto Sans Bengali TTFs as base64
+   * data URLs (see injectPrintFonts for why data URLs specifically). Built
+   * once, cached. If the font files are unavailable the CSS degrades to an
+   * empty string and the system-font stack applies (printing Bengali may
+   * then fail on this Electron build — see PRINT_SPECIFICATION.md).
+   */
+  private buildFontFaceCss(): string {
+    if (this.fontFaceCss !== null) return this.fontFaceCss
+    const dir = this.fontsDir ?? (app.isPackaged ? join(process.resourcesPath, 'fonts') : join(app.getAppPath(), 'resources', 'fonts'))
+    const faces: string[] = []
+    for (const subset of ['bengali', 'latin'] as const) {
+      for (const weight of [400, 500, 600, 700] as const) {
+        const file = `noto-sans-bengali-${subset}-${weight}-normal.ttf`
+        try {
+          const b64 = readFileSync(join(dir, file)).toString('base64')
+          const range = subset === 'bengali' ? BENGALI_RANGE : LATIN_RANGE
+          faces.push(`@font-face { font-family: 'Noto Sans Bengali'; src: url(data:font/ttf;base64,${b64}) format('truetype'); font-weight: ${weight}; font-style: normal; unicode-range: ${range}; }`)
+        } catch {
+          // Font file missing — degrade to the system stack.
+        }
+      }
+    }
+    this.fontFaceCss = faces.join('\n')
+    return this.fontFaceCss
+  }
 
   async renderPdf(html: string, opts: PrintPdfPayload): Promise<PrintPdfResult> {
     if (typeof html !== 'string' || html.length === 0) throw errValidation('Empty print document.')
@@ -68,11 +111,11 @@ export class PrintManager {
     const htmlPath = join(this.ctx.paths.tempDir, `${id}.html`)
     const pdfPath = join(this.ctx.paths.tempDir, `${id}.pdf`)
 
-    // System-font strategy for print (see injectPrintFonts docblock): no
-    // @font-face webfonts — Chromium 152's print compositor cannot print
-    // webfont-sourced pages. Explicit stack with Windows' bundled Bengali
-    // font; the templates' own stacks are extended with Nirmala UI as well.
+    // Data-URL embedded fonts for print (see injectPrintFonts docblock):
+    // the compositor cannot re-fetch dentiva-safe:// subresources and system
+    // Bengali fonts failed on both platforms — inline base64 TTFs instead.
     const fontCss = `
+      ${this.buildFontFaceCss()}
       html, body { font-family: 'Noto Sans Bengali', 'Nirmala UI', 'Inter', system-ui, sans-serif; }
     `
     const fullHtml = injectPrintFonts(html, fontCss)

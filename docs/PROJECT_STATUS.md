@@ -31,7 +31,7 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Current Task
 
-1. CI run 36726128680 (2baf949) diagnosed — packaged E2E **29/30** (only the print step fails), geometry confirmed TTF webfonts fail too. Fourth-round fix committed: print documents switch to SYSTEM fonts (AD-031) — push and watch the next run.
+1. CI run 36727894316 (8691030) FALSIFIED the round-4 system-font hypothesis: system-font Bengali templates still fail (geometry 11/29, packaged 29/30 — same single print step), while that run's data-URL-webfont diagnostic page became the ONLY Bengali document ever printed on this stack. Round-5 fix committed: print documents embed fonts as base64 DATA-URL @font-face rules (AD-032) + full attribution probe matrix (P1–P11) + Windows error-toast capture in the packaged print step — push and watch the next run.
 
 ## Next Tasks
 
@@ -42,7 +42,10 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Failed Tests / Unresolved Issues
 
-- **36726128680 (2baf949): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 10/28 (TTF did not fix webfont printing). Round-4 root cause + fix (not yet CI-verified):**
+- **36727894316 (8691030): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 11/29. Round-5 root cause + fix (not yet CI-verified):**
+  - System-font strategy falsified — real templates with NO webfonts still failed on both platforms; the run's mixed-page diagnostic (data-URL webfont + system-font paragraphs) printed, the ONLY Bengali print success on this stack. Differential verdict refined: protocol-delivered webfonts never print (compositor cannot re-fetch through the custom scheme); system Bengali fonts failed too; data-URL webfonts print.
+  - FIX (AD-032): PrintManager inlines the bundled Noto Sans Bengali TTF subsets as base64 data-URL @font-face rules (unicode-ranged, ~700KB under the 2MB cap). Attribution probes P1–P11 added to the geometry suite as informational cases (font-resolution canvas report, content/timing/option matrix, run-36727894316 repro). Packaged E2E print step now captures the app's error toast for a Windows-side signature.
+- **36726128680 (2baf949): verify ✓, windows-installer ✓, packaged E2E 29/30, e2e geometry 10/28 (TTF did not fix webfont printing). Round-4 root cause + fix (confirmed falsified by 36727894316):**
   - TTF webfonts fail identically → the failure is webfont-per-se in Electron 44 (Chromium 152), not the format or the custom protocol. The packaged Windows app's invoice print (the only remaining packaged step failure) matches the same root cause cross-platform.
   - FIX (AD-031): print documents use SYSTEM fonts (Noto Sans Bengali → Windows' Nirmala UI → sans-serif); the UI keeps bundled WOFF2. Geometry driver installs the bundled Noto TTF as a system font on Linux CI; embedded-font assertions accept NotoSansBengali|NirmalaUI. Informational probe added for data-URL webfont printing.
 - **36723879956 (c1c1bf1): verify ✓, windows-installer ✓, packaged E2E 26/30, e2e geometry 10/28. Round-3 root causes, all fixed (confirmed by 36726128680: 29/30):**
@@ -69,8 +72,8 @@ Phase 4/5 — testing & audit-fix cycle. Service-level suite fully green (152 te
 
 ## Last Verified Commit
 
-- `2baf949` (pushed): verify ✓, windows-installer ✓, packaged-E2E 29/30, geometry 10/28 (TTF experiment negative). Round-4 fix (system-font print strategy, AD-031) sits locally on top, pending push + CI.
-- Local gate on the round-4 fix: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ geometry bundle esbuild ✓.
+- `8691030` (pushed): verify ✓, windows-installer ✓, packaged-E2E 29/30, geometry 11/29 (system-font strategy falsified; data-URL diagnostic printed). Round-5 fix (data-URL embedded fonts, AD-032 + probe matrix) sits locally on top, pending push + CI.
+- Local gate on the round-5 fix: typecheck ✓ lint ✓ **152/152 tests** ✓ build ✓ geometry bundle esbuild ✓.
 - Previous full green: `ff258bd` / run 36696431273 (verify + e2e smoke, before Windows jobs existed).
 
 ## Build Status
@@ -81,7 +84,7 @@ Sandbox-local gate on 236e84c (all green, verified 2026-09-30):
 - `npm test`: **152/152 across 13 files**.
 - `npm run build`: succeeds.
 - `npm run dist`: not runnable in sandbox (no Windows/electron-builder targets here); performed on CI `windows-installer` job.
-- GitHub Actions: 36719098611 → 36726128680 (four runs): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30 → **29/30**; e2e geometry failing but fully root-caused (webfont print compositor defect, AD-031 fix pending). Next run must confirm all four green.
+- GitHub Actions: 36719098611 → 36727894316 (five runs): verify ✓ and windows-installer ✓ every time; packaged E2E 16/30 → 23/30 → 26/30 → 29/30 → **29/30**; e2e geometry 16→10→10→11/29 — the print pipeline defect is differentially attributed (protocol webfonts never print; system Bengali fonts failed; data-URL webfonts print) and the AD-032 fix is pending CI. Next run must confirm all four green.
 
 ## Release Status
 
