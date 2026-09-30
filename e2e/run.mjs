@@ -71,7 +71,11 @@ async function main() {
     await window.waitForLoadState('domcontentloaded')
 
     await step('app opens a window', async () => {
-      if (!(await window.isVisible())) throw new Error('window is not visible')
+      // Page.isVisible() needs a selector — check the document instead:
+      // firstWindow() resolving proves a window exists; visibilityState
+      // proves it is actually shown (Electron reports 'hidden' otherwise).
+      const state = await window.evaluate(() => document.visibilityState)
+      if (state !== 'visible') throw new Error(`window is not visible (visibilityState: ${state})`)
     })
 
     await step('renderer reaches the activation step', async () => {
